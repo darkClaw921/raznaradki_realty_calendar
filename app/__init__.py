@@ -1,0 +1,2 @@
+# FastAPI Realty Calendar Application
+

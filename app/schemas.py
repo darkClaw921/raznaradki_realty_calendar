@@ -1,0 +1,98 @@
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import date, time, datetime
+
+
+# Схемы для услуг
+class ServiceCreate(BaseModel):
+    """Схема для создания услуги"""
+    name: str
+
+
+class ServiceResponse(BaseModel):
+    """Схема для ответа с услугой"""
+    id: int
+    name: str
+    is_active: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class BookingServiceCreate(BaseModel):
+    """Схема для добавления услуги к бронированию"""
+    booking_id: int
+    service_id: int
+    price: float
+
+
+class BookingServiceResponse(BaseModel):
+    """Схема для ответа с услугой бронирования"""
+    id: int
+    booking_id: int
+    service_id: int
+    price: float
+    service_name: str  # Название услуги
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Webhook схемы
+class ClientSchema(BaseModel):
+    """Схема данных клиента из webhook"""
+    id: int
+    fio: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    additional_phone: Optional[str] = None
+
+
+class ApartmentSchema(BaseModel):
+    """Схема данных квартиры из webhook"""
+    id: int
+    title: Optional[str] = None
+    address: Optional[str] = None
+
+
+class BookingSchema(BaseModel):
+    """Схема данных бронирования из webhook"""
+    id: int
+    begin_date: date
+    end_date: date
+    realty_id: int
+    client_id: int
+    amount: Optional[float] = None
+    prepayment: Optional[float] = None
+    payment: Optional[float] = None
+    arrival_time: Optional[time] = None
+    departure_time: Optional[time] = None
+    notes: Optional[str] = None
+    client: ClientSchema
+    apartment: Optional[ApartmentSchema] = None
+    address: Optional[str] = None
+    number_of_days: Optional[int] = None
+    number_of_nights: Optional[int] = None
+    is_delete: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class WebhookDataSchema(BaseModel):
+    """Схема данных внутри webhook body"""
+    booking: BookingSchema
+
+
+class WebhookPayloadSchema(BaseModel):
+    """Полная схема webhook payload"""
+    action: str
+    status: str
+    data: WebhookDataSchema
+
+
+class WebhookRequestSchema(BaseModel):
+    """Схема входящего webhook запроса (массив)"""
+    body: WebhookPayloadSchema
+
