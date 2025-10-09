@@ -164,34 +164,52 @@ def get_grouped_bookings(
     result = []
     
     for booking in bookings:
-        # Используем полный apartment_title как ключ
-        key = (booking.apartment_title, booking.begin_date)
+        # Определяем тип статуса на основе совпадения дат
+        # Проверяем, совпадает ли дата отчета (filter_date) с датами бронирования
+        is_checkout = False
+        is_checkin = False
+        
+        if filter_date:
+            # Если filter_date совпадает с end_date - это выселение
+            is_checkout = (booking.end_date == filter_date)
+            # Если filter_date совпадает с begin_date - это заселение
+            is_checkin = (booking.begin_date == filter_date)
+            
+            # Ключ группировки - по адресу и дате фильтра
+            key = (booking.apartment_title, filter_date)
+        else:
+            # Если фильтр не задан, используем begin_date как заселение
+            is_checkin = True
+            # Ключ группировки - по адресу и begin_date
+            key = (booking.apartment_title, booking.begin_date)
+        
+        # Пропускаем бронирования, которые не относятся к выбранной дате
+        if not is_checkout and not is_checkin:
+            continue
         
         if key not in grouped:
             grouped[key] = {
                 'address': booking.apartment_title,
-                'date': booking.begin_date,
+                'date': filter_date if filter_date else booking.begin_date,
                 'checkout': None,  # данные выселения
                 'checkin': None,   # данные заселения
             }
         
-        # Определяем тип статуса
-        status_lower = booking.status.lower() if booking.status else ''
-        
-        # Если это выселение или содержит "выс"
-        if 'выс' in status_lower or status_lower == 'checkout':
+        # Назначаем бронирование в соответствующие секции
+        if is_checkout:
             grouped[key]['checkout'] = booking
         
-        # Если это заселение или содержит "зас" или "booked"
-        if 'зас' in status_lower or status_lower == 'checkin' or status_lower == 'booked':
+        if is_checkin:
             grouped[key]['checkin'] = booking
     
     # Преобразуем в список
     for key, data in grouped.items():
         result.append(data)
     
-    # Сортируем по дате и адресу (базовый адрес сначала, потом дубль)
-    result.sort(key=lambda x: (x['date'], get_base_address(x['address']), x['address']), reverse=True)
+    # Сортируем: сначала по адресу (алфавитный порядок, дубли после базового), затем по дате (новые первыми)
+    # Используем стабильную сортировку: сначала по дате, затем по адресу
+    result.sort(key=lambda x: x['date'], reverse=True)  # по дате (новые первыми)
+    result.sort(key=lambda x: (get_base_address(x['address']).upper(), x['address'].upper()))  # по адресу (A-Z)
     
     # Группируем по базовому адресу (без учета даты) для определения дублей
     # Дубли должны быть рядом даже если у них разные даты заселения
