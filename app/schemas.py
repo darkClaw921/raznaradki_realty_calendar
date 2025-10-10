@@ -69,14 +69,14 @@ class BookingSchema(BaseModel):
     begin_date: date
     end_date: date
     realty_id: int
-    client_id: int
+    client_id: Optional[int] = None  # Опциональное поле (может быть None при удалении)
     amount: Optional[float] = None
     prepayment: Optional[float] = None
     payment: Optional[float] = None
     arrival_time: Optional[time] = None
     departure_time: Optional[time] = None
     notes: Optional[str] = None
-    client: ClientSchema
+    client: Optional[ClientSchema] = None  # Опциональное поле (может отсутствовать при удалении)
     apartment: Optional[ApartmentSchema] = None
     address: Optional[str] = None
     number_of_days: Optional[int] = None
@@ -109,4 +109,56 @@ class WebhookPayloadSchema(BaseModel):
 
 # WebhookRequestSchema теперь алиас для WebhookPayloadSchema (данные приходят напрямую без обёртки body)
 WebhookRequestSchema = WebhookPayloadSchema
+
+
+# Схемы для поступлений денег
+class PaymentCreate(BaseModel):
+    """Схема для создания поступления"""
+    booking_id: Optional[int] = None
+    booking_service_id: Optional[int] = None
+    apartment_title: Optional[str] = None
+    realty_id: Optional[int] = None
+    receipt_date: date
+    receipt_time: Optional[time] = None
+    amount: float
+    advance_for_future: Optional[float] = None
+    operation_type: Optional[str] = None
+    income_category: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class PaymentUpdate(BaseModel):
+    """Схема для обновления поступления"""
+    booking_id: Optional[int] = None
+    booking_service_id: Optional[int] = None
+    apartment_title: Optional[str] = None
+    realty_id: Optional[int] = None
+    receipt_date: Optional[date] = None
+    receipt_time: Optional[time] = None
+    amount: Optional[float] = None
+    advance_for_future: Optional[float] = None
+    operation_type: Optional[str] = None
+    income_category: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class PaymentResponse(BaseModel):
+    """Схема для ответа с поступлением"""
+    id: int
+    booking_id: Optional[int] = None
+    booking_service_id: Optional[int] = None
+    apartment_title: Optional[str] = None
+    realty_id: Optional[int] = None
+    receipt_date: date
+    receipt_time: Optional[time] = None
+    amount: float
+    advance_for_future: Optional[float] = None
+    operation_type: Optional[str] = None
+    income_category: Optional[str] = None
+    comment: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 

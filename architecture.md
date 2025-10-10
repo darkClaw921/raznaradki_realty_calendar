@@ -20,18 +20,22 @@ raznaradki_realty_calendar/
 │   ├── routers/
 │   │   ├── __init__.py          # Инициализация пакета роутеров
 │   │   ├── webhook.py           # Endpoint для webhook
-│   │   └── web.py               # Web UI endpoints
+│   │   ├── web.py               # Web UI endpoints
+│   │   └── payments.py          # Endpoints для поступлений денег
 │   ├── static/
 │   │   └── js/
-│   │       └── bookings.js      # JavaScript для страницы бронирований
+│   │       ├── bookings.js      # JavaScript для страницы бронирований
+│   │       └── payments.js      # JavaScript для страницы поступлений
 │   └── templates/
 │       ├── base.html            # Базовый шаблон с Bootstrap
 │       ├── login.html           # Страница входа
-│       └── bookings.html        # Таблица бронирований
+│       ├── bookings.html        # Таблица бронирований
+│       └── payments.html        # Таблица поступлений денег
 ├── logs/                        # Директория для логов
 ├── cells.json                   # Экспорт таблицы cells из старой БД (для миграции)
 ├── sheets.json                  # Экспорт таблицы sheets из старой БД (для миграции)
 ├── migrate_old_data.py          # Скрипт миграции данных из старой БД
+├── migrate_client_id_nullable.py # Скрипт миграции client_id на nullable
 ├── init_services.py             # Скрипт инициализации базовых услуг
 ├── .env                         # Переменные окружения (не в git)
 ├── .env.example                 # Пример переменных окружения
@@ -39,6 +43,7 @@ raznaradki_realty_calendar/
 ├── pyproject.toml               # Зависимости проекта
 ├── README.md                    # Документация проекта
 ├── MIGRATION_README.md          # Инструкция по миграции данных из старой БД
+├── MIGRATION_CLIENT_ID.md       # Инструкция по миграции client_id на nullable
 └── architecture.md              # Этот файл - описание архитектуры
 ```
 
@@ -48,9 +53,14 @@ raznaradki_realty_calendar/
 Главный файл приложения FastAPI:
 - Создание экземпляра FastAPI приложения
 - Настройка логирования через loguru (консоль + файл)
+- **Exception handler для RequestValidationError (422)**:
+  - Детальное логирование всех ошибок валидации запросов
+  - Логирует URL, метод, клиента, детали ошибок валидации
+  - Логирует raw body и form data для отладки
+  - Возвращает JSON с деталями ошибки
 - Lifecycle management (инициализация БД при запуске)
 - Подключение статических файлов (/static)
-- Подключение роутеров (webhook, web)
+- Подключение роутеров (webhook, web, payments)
 - Health check endpoint
 
 ### app/config.py
@@ -67,18 +77,42 @@ raznaradki_realty_calendar/
 - Dependency get_db() для получения сессии БД
 - Функция init_db() для создания таблиц
 
+### app/routers/payments.py
+Роутер для управления поступлениями денег:
+- **check_auth()** - проверка авторизации через session_token cookie, сравнивает с settings.secret_key (внутренняя функция)
+- **GET /payments** - страница с таблицей поступлений денег (требует авторизацию)
+  - Параметры: filter_date (одна дата) или filter_date_from и filter_date_to (диапазон)
+  - Объединяет данные из двух источников:
+    1. Реальные поступления из таблицы payments
+    2. Услуги из таблицы booking_services (отображаются автоматически)
+  - Услуги из booking_services выделяются серым фоном и помечены "Услуга" в колонке действий
+  - Автоматический расчет суммы аванса на будущие заселения
+  - Расчет плана/факта в шапке таблицы (только по реальным поступлениям)
+- **POST /payments/create** - создать новое поступление (требует авторизацию)
+  - Принимает данные формы (все как строки): booking_id, booking_service_id, apartment_title, receipt_date, receipt_time, amount, advance_for_future, operation_type, income_category, comment
+  - Автоматическая обработка пустых строк: пустые строки преобразуются в None
+  - Логика: если указан booking_id и apartment_title пустой, то apartment_title берется из бронирования автоматически
+  - Возвращает JSON с результатом операции
+- **GET /payments/list** - получить список поступлений в JSON (требует авторизацию)
+  - Параметры filter_date, filter_date_from, filter_date_to, apartment_title для фильтрации
+- **PUT /payments/{payment_id}** - обновить поступление (требует авторизацию)
+- **DELETE /payments/{payment_id}** - удалить поступление (требует авторизацию)
+- **GET /payments/calculate-advance** - рассчитать сумму авансов на будущие заселения (требует авторизацию)
+  - Параметры: apartment_title, selected_date
+  - Возвращает общую сумму предоплат по будущим бронированиям
+
 ### app/models.py
 SQLAlchemy модели базы данных:
 - **Booking** - модель бронирования с полями:
   - Основные: id, action, status
   - Даты: begin_date, end_date
-  - ID связей: realty_id, client_id
+  - ID связей: realty_id, client_id (nullable, может быть None при удалении)
   - Финансы: amount, prepayment, payment
   - Время: arrival_time, departure_time
   - Клиент: client_fio, client_phone, client_email
-  - Квартира: apartment_title, apartment_address
+  - Квартира: apartment_title (индексируется), apartment_address
   - Дополнительно: number_of_days, number_of_nights, notes, checkin_day_comments
-  - Флаги: is_delete
+  - Флаги: is_delete (индексируется)
   - Временные метки: created_at, updated_at
   - Связи: services (relationship с BookingService)
 - **Service** - справочник дополнительных услуг:
@@ -92,6 +126,21 @@ SQLAlchemy модели базы данных:
   - service_id: ID услуги (FK)
   - price: цена услуги
   - created_at: дата добавления
+- **Payment** - модель поступлений денег:
+  - id: уникальный идентификатор
+  - booking_id: ID бронирования (FK -> bookings.id, SET NULL при удалении, опционально)
+  - booking_service_id: ID услуги бронирования (FK -> booking_services.id, SET NULL при удалении, опционально)
+  - apartment_title: название объекта недвижимости (опционально, берется из booking если указан booking_id)
+  - realty_id: ID недвижимости (опционально)
+  - receipt_date: дата поступления (индексируется)
+  - receipt_time: время поступления (опционально)
+  - amount: сумма поступления
+  - advance_for_future: сумма аванса на будущее заселение (опционально)
+  - operation_type: тип операции (наличные, безналичный расчет и т.д., опционально)
+  - income_category: статья поступления (название услуги или другая категория, опционально)
+  - comment: комментарий (опционально)
+  - created_at, updated_at: временные метки
+  - Связи: booking (many-to-one), booking_service (many-to-one)
 
 ### app/schemas.py
 Pydantic схемы для валидации данных:
@@ -101,19 +150,23 @@ Pydantic схемы для валидации данных:
 - **BookingServiceResponse** - ответ с услугой бронирования (id, booking_id, service_id, price, service_name, created_at)
 - **ClientSchema** - данные клиента (id, fio, email, phone); игнорирует дополнительные поля
 - **ApartmentSchema** - данные квартиры (id, title, address); игнорирует дополнительные поля
-- **BookingSchema** - данные бронирования (все поля модели); игнорирует дополнительные поля (payments_with_deleted, url и т.д.)
+- **BookingSchema** - данные бронирования (все поля модели); client_id и client опциональные (могут быть None при удалении бронирования); игнорирует дополнительные поля (payments_with_deleted, url и т.д.)
 - **WebhookDataSchema** - обертка для booking; игнорирует дополнительные поля
 - **WebhookPayloadSchema** - payload webhook (action, status, data); игнорирует дополнительные поля (changes, crm_entity_id и т.д.)
 - **WebhookRequestSchema** - алиас для WebhookPayloadSchema (данные приходят напрямую без обёртки body)
+- **PaymentCreate** - создание поступления (все поля опциональные кроме receipt_date и amount: booking_id, booking_service_id, apartment_title, receipt_date, receipt_time, amount, advance_for_future, operation_type, income_category, comment)
+- **PaymentUpdate** - обновление поступления (все поля опциональные)
+- **PaymentResponse** - ответ с поступлением (все поля модели Payment, включая booking_id и booking_service_id, apartment_title может быть None)
 
 ### app/crud.py
 CRUD операции для работы с базой данных:
-- **create_or_update_booking()** - создает новое или обновляет существующее бронирование
+- **create_or_update_booking()** - создает новое или обновляет существующее бронирование; корректно обрабатывает случай когда client = None (при удалении бронирования)
 - **mark_booking_as_deleted()** - помечает бронирование как удаленное
 - **get_bookings()** - получает список бронирований с фильтрацией по дате:
   - Фильтр по дате выбирает бронирования где указанная дата является датой заселения (begin_date) ИЛИ датой выселения (end_date)
   - Возвращает только не удаленные бронирования
 - **get_booking_by_id()** - получает бронирование по ID
+- **get_unique_apartments()** - получает список уникальных объектов недвижимости (DISTINCT запрос, оптимизирован)
 - **get_grouped_bookings()** - группирует бронирования по apartment_title и дате для отображения:
   - Использует apartment_title (название квартиры) для поля address
   - Объединяет выселение и заселение на один адрес в одну строку
@@ -138,6 +191,25 @@ CRUD операции для работы с базой данных:
 - **add_booking_service()** - добавляет услугу к бронированию
 - **delete_booking_service()** - удаляет услугу из бронирования
 - **get_booking_services_total()** - получает общую сумму услуг для бронирования
+- **create_payment()** - создает новое поступление
+- **get_payments()** - получает список поступлений с фильтрацией по дате/диапазону дат и объекту
+  - Поддерживает фильтрацию по одной дате (filter_date) или по диапазону (filter_date_from, filter_date_to)
+  - Загружает связанные данные из booking_service и service для отображения названия услуги в таблице
+  - Использует joinedload для оптимизации загрузки связанных сущностей
+- **get_payment_by_id()** - получает поступление по ID
+- **update_payment()** - обновляет поступление
+- **delete_payment()** - удаляет поступление
+- **calculate_advance_for_future_bookings()** - рассчитывает сумму авансов на будущие заселения после указанной даты для конкретного объекта
+- **get_bookings_with_services()** - получает бронирования с их услугами для отображения в форме поступлений
+  - Оптимизировано с использованием joinedload для избежания N+1 проблемы
+  - Загружает бронирования со всеми связанными услугами одним запросом
+- **get_booking_services_as_payments()** - получает все услуги из booking_services в формате поступлений
+  - Фильтрация по дате заселения бронирования (begin_date), которая используется как дата поступления
+  - Фильтр работает так же как для обычных поступлений: одна дата (filter_date) или диапазон (filter_date_from, filter_date_to)
+  - Преобразует услуги в формат словаря с полями: id, booking_id, booking_service_id, apartment_title, receipt_date, amount, income_category
+  - Флаг is_from_booking_service=True для идентификации источника данных
+  - Используется для автоматического отображения услуг в таблице поступлений
+  - Оптимизировано: один JOIN запрос вместо двух отдельных
 
 ### app/auth.py
 Система аутентификации:
@@ -200,11 +272,72 @@ CRUD операции для работы с базой данных:
     - Границы для всех ячеек, выравнивание по центру для заголовков
   - Возвращает файл через StreamingResponse
 
+### app/templates/payments.html
+Страница с таблицей поступлений денег:
+- **Шапка План/Факт**:
+  - План на месяц
+  - Факт реального заселения
+  - Остаток до выполнения плана
+  - Общая сумма аванса на будущие заселения (выделена зеленым фоном)
+- **Форма фильтрации по диапазону дат**:
+  - Поле "Дата с" (filter_date_from) - начало диапазона
+  - Поле "Дата по" (filter_date_to) - конец диапазона
+  - Кнопки: Фильтровать, Сбросить
+- Кнопка добавления нового поступления
+- Таблица с колонками:
+  - Объект, Дата поступления, Время поступления
+  - Сумма поступления, Сумма аванса на будущее заселение (выделяется зеленым)
+  - Тип операции, Статья поступления, Комментарий, Действия
+  - **Колонка "Статья поступления"**: отображает название услуги из booking_service.service.name если поступление связано с booking_service_id, иначе отображает значение income_category
+  - **Два типа строк**:
+    1. Реальные поступления (белый фон) - с кнопкой удаления
+    2. Услуги из booking_services (серый фон) - помечены "Услуга", нельзя удалить
+- Модальное окно для добавления поступления:
+  - Выбор бронирования из списка (с информацией об объекте, дате и клиенте)
+  - Выбор услуги бронирования (загружаются динамически при выборе бронирования)
+  - Поле объекта (автозаполняется при выборе бронирования)
+  - Поля даты и времени поступления
+  - Поле суммы поступления (автозаполняется при выборе услуги)
+  - Поле суммы аванса с кнопкой автоматического расчета
+  - Поля типа операции и статьи поступления (с автодополнением, статья автозаполняется при выборе услуги)
+  - Поле комментария
+- Кнопка удаления для каждого поступления
+- Форматирование сумм с разделителем тысяч
+- Уведомления об успехе/ошибке операций
+- Подключает JavaScript файл payments.js
+
+### app/static/js/payments.js
+JavaScript для страницы поступлений:
+- **initBookingSelect()** - инициализация выбора бронирования
+  - При выборе бронирования загружает список его услуг
+  - Автозаполнение поля объекта (apartment_title)
+  - Динамическое создание опций в селекте услуг с ценами
+  - При выборе услуги автозаполняет сумму и статью поступления
+- **initAddPaymentForm()** - инициализация формы добавления поступления
+  - Очистка пустых строк для опциональных числовых полей (booking_id, booking_service_id, advance_for_future)
+  - Отправка формы через AJAX на /payments/create
+  - Включает booking_id и booking_service_id в запрос
+  - Перезагрузка страницы после успешного создания
+- **initDeleteButtons()** - инициализация кнопок удаления
+  - Подтверждение удаления
+  - Удаление строки из таблицы без перезагрузки
+  - AJAX запрос на DELETE /payments/{payment_id}
+- **initCalculateAdvance()** - инициализация кнопки расчета аванса
+  - Проверка заполнения объекта и даты
+  - AJAX запрос на GET /payments/calculate-advance
+  - Автоматическое заполнение поля advance_for_future
+- **formatNumber()** - форматирование чисел с разделителем тысяч
+- **showNotification()** - показ всплывающих уведомлений
+  - Автоматическое скрытие через 5 секунд
+
 ### app/templates/base.html
 Базовый HTML шаблон:
 - Bootstrap 5 для стилизации
 - Bootstrap Icons для иконок
-- Навигационная панель
+- Навигационная панель с вкладками:
+  - Бронирования
+  - Поступления (новая вкладка)
+  - Выход
 - Блоки для расширения (content, extra_css, extra_js)
 
 ### app/templates/login.html
@@ -369,6 +502,57 @@ JavaScript для страницы бронирований:
 - Требует: авторизация через cookie
 - Response: Excel файл
 
+### Payments API
+
+#### GET /payments
+Страница поступлений денег
+- Query параметры: 
+  - `filter_date` (YYYY-MM-DD) - фильтр по одной дате поступления
+  - `filter_date_from` (YYYY-MM-DD) - начало диапазона дат
+  - `filter_date_to` (YYYY-MM-DD) - конец диапазона дат
+- Можно использовать либо `filter_date`, либо `filter_date_from` и `filter_date_to`
+- Требует: авторизация через cookie
+
+#### POST /payments/create
+Создать новое поступление
+- Form data (все поля как строки): `booking_id`, `booking_service_id`, `apartment_title`, `receipt_date`, `receipt_time`, `amount`, `advance_for_future`, `operation_type`, `income_category`, `comment`
+- Обработка данных:
+  - Пустые строки автоматически преобразуются в None
+  - Числовые поля (booking_id, booking_service_id, amount, advance_for_future) парсятся на сервере
+  - Если указан `booking_id` и `apartment_title` пустой, то `apartment_title` берется из бронирования автоматически
+- Требует: авторизация через cookie
+- Response: JSON `{"status": "success", "message": "...", "id": 1}`
+
+#### GET /payments/list
+Получить список поступлений в JSON
+- Query параметры: 
+  - `filter_date` (YYYY-MM-DD) - фильтр по одной дате
+  - `filter_date_from` (YYYY-MM-DD) - начало диапазона
+  - `filter_date_to` (YYYY-MM-DD) - конец диапазона
+  - `apartment_title` - фильтр по объекту
+- Можно использовать либо `filter_date`, либо `filter_date_from` и `filter_date_to`
+- Требует: авторизация через cookie
+- Response: JSON `{"payments": [...]}`
+
+#### PUT /payments/{payment_id}
+Обновить поступление
+- Path параметр: `payment_id`
+- Form data: поля для обновления (все опциональные)
+- Требует: авторизация через cookie
+- Response: JSON `{"status": "success", "message": "..."}`
+
+#### DELETE /payments/{payment_id}
+Удалить поступление
+- Path параметр: `payment_id`
+- Требует: авторизация через cookie
+- Response: JSON `{"status": "success", "message": "..."}`
+
+#### GET /payments/calculate-advance
+Рассчитать сумму авансов на будущие заселения
+- Query параметры: `apartment_title`, `selected_date`
+- Требует: авторизация через cookie
+- Response: JSON `{"status": "success", "total_advance": 10000.0}`
+
 #### GET /health
 Health check endpoint
 ```json
@@ -387,7 +571,7 @@ Health check endpoint
 | begin_date | Date | Дата заезда (индексируется) |
 | end_date | Date | Дата выезда |
 | realty_id | Integer | ID недвижимости |
-| client_id | Integer | ID клиента |
+| client_id | Integer (nullable) | ID клиента (может быть None при удалении) |
 | amount | Numeric(10,2) | Общая сумма |
 | prepayment | Numeric(10,2) | Предоплата |
 | payment | Numeric(10,2) | Оплата |
@@ -398,11 +582,11 @@ Health check endpoint
 | client_fio | String | ФИО клиента |
 | client_phone | String | Телефон клиента |
 | client_email | String | Email клиента |
-| apartment_title | String | Название квартиры |
+| apartment_title | String | Название квартиры (индексируется для оптимизации) |
 | apartment_address | String | Адрес квартиры |
 | number_of_days | Integer | Количество дней |
 | number_of_nights | Integer | Количество ночей |
-| is_delete | Boolean | Флаг удаления |
+| is_delete | Boolean | Флаг удаления (индексируется для быстрой фильтрации) |
 | created_at | DateTime | Дата создания записи |
 | updated_at | DateTime | Дата обновления записи |
 | webhook_created_at | DateTime | Дата создания из webhook |
@@ -433,6 +617,37 @@ Health check endpoint
 - services.booking_services -> booking_services (one-to-many, cascade delete)
 - booking_services.booking -> bookings (many-to-one)
 - booking_services.service -> services (many-to-one)
+
+### Таблица: payments
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| id | Integer (PK) | Уникальный идентификатор |
+| booking_id | Integer (FK -> bookings.id) | ID бронирования (индексируется, SET NULL при удалении, nullable) |
+| booking_service_id | Integer (FK -> booking_services.id) | ID услуги бронирования (индексируется, SET NULL при удалении, nullable) |
+| apartment_title | String | Название объекта недвижимости (nullable, берется из booking если указан booking_id) |
+| realty_id | Integer | ID недвижимости (nullable) |
+| receipt_date | Date | Дата поступления (индексируется, NOT NULL) |
+| receipt_time | Time | Время поступления (nullable) |
+| amount | Numeric(10,2) | Сумма поступления (NOT NULL) |
+| advance_for_future | Numeric(10,2) | Сумма аванса на будущее заселение (nullable) |
+| operation_type | String | Тип операции (наличные, безналичный расчет и т.д., nullable) |
+| income_category | String | Статья поступления (название услуги или другая категория, nullable) |
+| comment | String | Комментарий (nullable) |
+| created_at | DateTime | Дата создания записи |
+| updated_at | DateTime | Дата обновления записи |
+
+**Связи:**
+- payments.booking -> bookings (many-to-one)
+- payments.booking_service -> booking_services (many-to-one)
+
+**Функциональность:**
+- Учет всех денежных поступлений по объектам недвижимости
+- Связь поступлений с конкретными бронированиями и их услугами
+- Автоматическое заполнение данных при выборе бронирования и услуги
+- Автоматический расчет суммы авансов на будущие заселения
+- Фильтрация по дате поступления и объекту
+- Типизация операций и статей поступления
 
 ## Зависимости
 
@@ -548,7 +763,46 @@ docker-compose down
 6. Используйте process manager (systemd, supervisor)
 7. Настройте мониторинг и алертинг
 
+## Оптимизация производительности
+
+Для ускорения работы приложения применены следующие оптимизации:
+
+### Индексы БД
+- **bookings.apartment_title** - индексируется для быстрого поиска по объектам
+- **bookings.is_delete** - индексируется для быстрой фильтрации активных бронирований
+- **bookings.begin_date** - индексируется для фильтрации по датам заселения
+- **payments.receipt_date** - индексируется для фильтрации поступлений по датам
+
+### Оптимизация запросов
+1. **get_unique_apartments()** - использует SELECT DISTINCT вместо загрузки 10000+ записей
+2. **get_bookings_with_services()** - использует joinedload для предзагрузки связанных данных (избегает N+1)
+3. **get_booking_services_as_payments()** - один JOIN запрос вместо двух отдельных запросов
+4. **get_payments()** - использует joinedload для предзагрузки booking_service и service
+
+### Результат
+- Время обработки запросов к `/payments` с диапазоном дат уменьшилось с ~5 секунд до < 1 секунды
+- Количество SQL запросов сократилось с N+1 до 1-3 запросов на страницу
+- Использование памяти снизилось за счет отказа от загрузки всех записей
+
 ## Дополнительные файлы
+
+### add_indexes_migration.py
+Скрипт миграции для добавления индексов в существующую БД:
+- Добавляет индексы на apartment_title и is_delete в таблице bookings
+- Проверяет существование индексов перед созданием
+- Использует loguru для логирования процесса
+- Создает лог в logs/migration_indexes.log
+- Безопасно обрабатывает ошибки с rollback
+- Запуск: `uv run python add_indexes_migration.py`
+
+### migrate_client_id_nullable.py
+Скрипт миграции для изменения поля client_id на nullable:
+- Изменяет поле client_id в таблице bookings с NOT NULL на NULL
+- Необходимо для корректной обработки webhook при удалении бронирования (client_id может быть None)
+- Проверяет текущее состояние поля перед миграцией
+- Использует loguru для логирования процесса
+- Создает лог в logs/migration_client_id_YYYYMMDD_HHMMSS.log
+- Запуск: `uv run python migrate_client_id_nullable.py`
 
 ### run.sh
 Скрипт для запуска приложения:
@@ -613,4 +867,14 @@ docker-compose down
 - Решение типичных проблем
 - Информация о логировании и статистике
 - Инструкция по откату миграции
+
+### MIGRATION_CLIENT_ID.md
+Инструкция по миграции поля client_id на nullable:
+- Описание зачем нужна миграция (обработка webhook удаления с client_id = None)
+- Когда запускать миграцию (один раз на существующей БД)
+- Пошаговая инструкция по запуску
+- Описание что делает миграция
+- Информация о логировании
+- Инструкция по откату (с предупреждением об удалении данных)
+- Список связанных изменений в коде
 

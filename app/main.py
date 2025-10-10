@@ -1,11 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from loguru import logger
 import sys
 
 from app.database import init_db
-from app.routers import webhook, web
+from app.routers import webhook, web, payments
 from prometheus_fastapi_instrumentator import Instrumentator
 # Настройка логирования через loguru
 logger.remove()  # Удаляем стандартный обработчик
@@ -58,6 +60,58 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+# Обработчик ошибок валидации для детального логирования
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Логирование ошибок валидации запросов"""
+    logger.error("=" * 80)
+    logger.error("ОШИБКА ВАЛИДАЦИИ ЗАПРОСА (422)")
+    logger.error(f"URL: {request.method} {request.url}")
+    logger.error(f"Client: {request.client.host if request.client else 'Unknown'}")
+    
+    # Логируем детали ошибок валидации
+    logger.error("Детали ошибок валидации:")
+    for error in exc.errors():
+        logger.error(f"  - Поле: {' -> '.join(str(loc) for loc in error['loc'])}")
+        logger.error(f"    Тип: {error['type']}")
+        logger.error(f"    Сообщение: {error['msg']}")
+        if 'input' in error:
+            logger.error(f"    Входное значение: {error['input']}")
+    
+    # Пытаемся получить body запроса
+    try:
+        body = await request.body()
+        logger.error(f"Request body (raw): {body.decode('utf-8', errors='ignore')}")
+    except Exception as e:
+        logger.error(f"Не удалось прочитать body: {e}")
+    
+    # Логируем form data если есть
+    try:
+        form = await request.form()
+        logger.error("Form data:")
+        for key, value in form.items():
+            logger.error(f"  {key}: '{value}' (type: {type(value).__name__})")
+    except Exception as e:
+        logger.error(f"Не удалось прочитать form data: {e}")
+    
+    logger.error("=" * 80)
+    
+    # Безопасная сериализация body для ответа
+    try:
+        body_str = str(exc.body) if exc.body else None
+    except:
+        body_str = None
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": exc.errors(),
+            "message": "Ошибка валидации данных"
+        }
+    )
+
+
 Instrumentator().instrument(app).expose(app)
 
 # Подключение статических файлов
@@ -66,6 +120,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # Подключение роутеров
 app.include_router(webhook.router)
 app.include_router(web.router)
+app.include_router(payments.router)
 
 
 @app.get("/health")

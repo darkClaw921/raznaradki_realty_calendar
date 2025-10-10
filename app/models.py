@@ -19,7 +19,7 @@ class Booking(Base):
     
     # ID связанных объектов
     realty_id = Column(Integer, nullable=False)
-    client_id = Column(Integer, nullable=False)
+    client_id = Column(Integer, nullable=True)  # Может быть None при удалении бронирования
     
     # Финансовые данные
     amount = Column(Numeric(10, 2), nullable=True)  # Общая сумма
@@ -40,7 +40,7 @@ class Booking(Base):
     client_email = Column(String, nullable=True)
     
     # Данные квартиры
-    apartment_title = Column(String, nullable=True)
+    apartment_title = Column(String, nullable=True, index=True)
     apartment_address = Column(String, nullable=True)
     
     # Дополнительная информация
@@ -48,7 +48,7 @@ class Booking(Base):
     number_of_nights = Column(Integer, nullable=True)
     
     # Флаги и временные метки
-    is_delete = Column(Boolean, default=False)
+    is_delete = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -96,4 +96,31 @@ class BookingService(Base):
     
     def __repr__(self):
         return f"<BookingService(id={self.id}, booking_id={self.booking_id}, service_id={self.service_id}, price={self.price})>"
+
+
+class Payment(Base):
+    """Модель поступлений денег"""
+    __tablename__ = "payments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id", ondelete="SET NULL"), nullable=True, index=True)  # Связь с бронированием
+    booking_service_id = Column(Integer, ForeignKey("booking_services.id", ondelete="SET NULL"), nullable=True, index=True)  # Связь с услугой бронирования
+    apartment_title = Column(String, nullable=True)  # Объект (может браться из booking)
+    realty_id = Column(Integer, nullable=True)  # ID недвижимости (опционально)
+    receipt_date = Column(Date, nullable=False, index=True)  # Дата поступления
+    receipt_time = Column(Time, nullable=True)  # Время поступления
+    amount = Column(Numeric(10, 2), nullable=False)  # Сумма поступления
+    advance_for_future = Column(Numeric(10, 2), nullable=True)  # Сумма аванса на будущее заселение
+    operation_type = Column(String, nullable=True)  # Тип операции
+    income_category = Column(String, nullable=True)  # Статья поступления (название услуги или другая категория)
+    comment = Column(String, nullable=True)  # Комментарий
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Связи
+    booking = relationship("Booking", foreign_keys=[booking_id])
+    booking_service = relationship("BookingService", foreign_keys=[booking_service_id])
+    
+    def __repr__(self):
+        return f"<Payment(id={self.id}, apartment_title={self.apartment_title}, receipt_date={self.receipt_date}, amount={self.amount})>"
 

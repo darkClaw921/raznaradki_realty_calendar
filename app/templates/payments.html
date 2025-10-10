@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Поступления денег - DMD Cottage{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payments-table {
+        width: auto;
+        table-layout: auto;
+    }
+    .payments-table th,
+    .payments-table td {
+        padding: 8px;
+        font-size: 14px;
+        white-space: nowrap;
+        border: 1px solid #dee2e6;
+    }
+    .payments-table th {
+        background-color: rgb(245, 245, 245);
+        text-align: center;
+        vertical-align: middle;
+        font-weight: bold;
+        position: relative;
+    }
+    .btn-add-payment {
+        margin-bottom: 15px;
+    }
+    .form-control-sm {
+        font-size: 0.875rem;
+    }
+    .actions-column {
+        text-align: center;
+    }
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    .advance-highlight {
+        background-color: #ccffcc;
+        font-weight: bold;
+    }
+    .plan-fact-header {
+        background-color: #f5f5f5;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        border: 2px solid #dee2e6;
+    }
+    .plan-fact-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .plan-fact-label {
+        font-weight: bold;
+        font-size: 16px;
+    }
+    .plan-fact-value {
+        font-size: 18px;
+        font-weight: bold;
+    }
+    .plan-value {
+        color: #dc3545;
+    }
+    .fact-value {
+        color: #198754;
+    }
+    .advance-value {
+        color: #0dcaf0;
+        background-color: #ccffcc;
+        padding: 5px 15px;
+        border-radius: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Шапка План/Факт -->
+    <div class="plan-fact-header">
+        <div class="plan-fact-row">
+            <span class="plan-fact-label">План на месяц</span>
+            <span class="plan-fact-value plan-value">{{ '{:,.2f}'.format(total_plan).replace(',', ' ') }}</span>
+        </div>
+        <div class="plan-fact-row">
+            <span class="plan-fact-label">Факт реального заселения</span>
+            <span class="plan-fact-value fact-value">{{ '{:,.2f}'.format(total_fact).replace(',', ' ') }}</span>
+        </div>
+        <div class="plan-fact-row">
+            <span class="plan-fact-label">Остаток до выполнения плана</span>
+            <span class="plan-fact-value plan-value">{{ '{:,.2f}'.format(total_plan - total_fact).replace(',', ' ') }}</span>
+        </div>
+        <div class="plan-fact-row" style="border-top: 2px solid #0dcaf0; padding-top: 10px; margin-top: 10px;">
+            <span class="plan-fact-label">Общая сумма аванса на будущие заселения</span>
+            <span class="plan-fact-value advance-value">{{ '{:,.2f}'.format(total_advance).replace(',', ' ') }}</span>
+        </div>
+    </div>
+
+    <!-- Фильтр -->
+    <div class="filter-section">
+        <h4 class="mb-3"><i class="bi bi-funnel"></i> Фильтр поступлений</h4>
+        <form method="get" action="/payments" class="row g-3">
+            <div class="col-md-3">
+                <label for="filter_date_from" class="form-label">Дата с:</label>
+                <input type="date" class="form-control" id="filter_date_from" name="filter_date_from" 
+                       value="{{ filter_date_from or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="filter_date_to" class="form-label">Дата по:</label>
+                <input type="date" class="form-control" id="filter_date_to" name="filter_date_to" 
+                       value="{{ filter_date_to or '' }}">
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-funnel-fill"></i> Фильтровать
+                </button>
+                <a href="/payments" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Сбросить
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Кнопка добавления -->
+    <div class="table-container">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="bi bi-cash-coin"></i> Поступления денег</h4>
+            <button type="button" class="btn btn-success btn-add-payment" data-bs-toggle="modal" data-bs-target="#addPaymentModal">
+                <i class="bi bi-plus-circle"></i> Добавить поступление
+            </button>
+        </div>
+
+        <!-- Таблица поступлений -->
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered payments-table">
+                <thead>
+                    <tr>
+                        <th>Объект</th>
+                        <th>Дата поступления</th>
+                        <th>Время поступления</th>
+                        <th>Сумма поступления</th>
+                        <th>Сумма аванса на будущее заселение</th>
+                        <th>Тип операции</th>
+                        <th>Статья поступления</th>
+                        <th>Комментарий</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="paymentsTableBody">
+                    {% if payments %}
+                        {% for payment in payments %}
+                        <tr data-payment-id="{{ payment.id or '' }}" {% if payment.is_from_booking_service %}style="background-color: #f8f9fa;"{% endif %}>
+                            <td><strong>{{ payment.apartment_title or '-' }}</strong></td>
+                            <td>{{ payment.receipt_date.strftime('%d.%m.%Y') if payment.receipt_date else '-' }}</td>
+                            <td>{{ payment.receipt_time.strftime('%H:%M') if payment.receipt_time else '-' }}</td>
+                            <td style="text-align: right;">{{ '{:,.0f}'.format(payment.amount).replace(',', ' ') if payment.amount else '-' }}</td>
+                            <td style="text-align: right;" class="{{ 'advance-highlight' if payment.advance_for_future else '' }}">
+                                {{ '{:,.0f}'.format(payment.advance_for_future).replace(',', ' ') if payment.advance_for_future else '-' }}
+                            </td>
+                            <td>{{ payment.operation_type or '-' }}</td>
+                            <td>
+                                {% if payment.is_from_booking_service %}
+                                    {{ payment.income_category }}
+                                {% elif payment.booking_service and payment.booking_service.service %}
+                                    {{ payment.booking_service.service.name }}
+                                {% elif payment.income_category %}
+                                    {{ payment.income_category }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ payment.comment or '-' }}</td>
+                            <td class="actions-column">
+                                {% if not payment.is_from_booking_service %}
+                                <button type="button" class="btn btn-danger btn-sm delete-payment" data-payment-id="{{ payment.id }}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                                {% else %}
+                                <span class="text-muted">Услуга</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center">Нет данных для отображения</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления поступления -->
+<div class="modal fade" id="addPaymentModal" tabindex="-1" aria-labelledby="addPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addPaymentModalLabel">Добавить поступление</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addPaymentForm">
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="booking_select" class="form-label">Выберите бронирование</label>
+                            <select class="form-select" id="booking_select" name="booking_id">
+                                <option value="">-- Выберите бронирование --</option>
+                                {% for booking in bookings_with_services %}
+                                <option value="{{ booking.id }}" 
+                                        data-apartment="{{ booking.apartment_title }}"
+                                        data-services='{{ booking.services | tojson }}'>
+                                    {{ booking.apartment_title }} - {{ booking.begin_date.strftime('%d.%m.%Y') }} - {{ booking.client_fio or 'Без имени' }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="booking_service_select" class="form-label">Выберите услугу</label>
+                            <select class="form-select" id="booking_service_select" name="booking_service_id">
+                                <option value="">-- Сначала выберите бронирование --</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="apartment_title" class="form-label">Объект</label>
+                            <input type="text" class="form-control" id="apartment_title" name="apartment_title" list="apartmentsList">
+                            <datalist id="apartmentsList">
+                                {% for apt in unique_apartments %}
+                                <option value="{{ apt }}">
+                                {% endfor %}
+                            </datalist>
+                            <small class="text-muted">Заполняется автоматически при выборе бронирования</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="receipt_date" class="form-label">Дата поступления *</label>
+                            <input type="date" class="form-control" id="receipt_date" name="receipt_date" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="receipt_time" class="form-label">Время поступления</label>
+                            <input type="time" class="form-control" id="receipt_time" name="receipt_time">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="amount" class="form-label">Сумма поступления *</label>
+                            <input type="number" step="0.01" class="form-control" id="amount" name="amount" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="advance_for_future" class="form-label">Сумма аванса на будущее заселение</label>
+                            <div class="input-group">
+                                <input type="number" step="0.01" class="form-control" id="advance_for_future" name="advance_for_future" readonly>
+                                <button type="button" class="btn btn-outline-secondary" id="calculateAdvanceBtn">
+                                    <i class="bi bi-calculator"></i> Рассчитать
+                                </button>
+                            </div>
+                            <small class="text-muted">Нажмите "Рассчитать" чтобы автоматически посчитать аванс на будущие заселения</small>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="operation_type" class="form-label">Тип операции</label>
+                            <input type="text" class="form-control" id="operation_type" name="operation_type" list="operationTypesList">
+                            <datalist id="operationTypesList">
+                                <option value="Наличный расчет">
+                                <option value="Безналичный расчет">
+                                <option value="Банковский перевод">
+                                <option value="Онлайн-оплата">
+                            </datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="income_category" class="form-label">Статья поступления</label>
+                            <input type="text" class="form-control" id="income_category" name="income_category" list="incomeCategoriesList">
+                            <datalist id="incomeCategoriesList">
+                                <option value="БРОНЬ">
+                                <option value="Аренда">
+                                <option value="Предоплата">
+                                <option value="Доплата">
+                                <option value="Оплата в день заселения">
+                                <option value="Аванс">
+                                <option value="Залог">
+                            </datalist>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="comment" class="form-label">Комментарий</label>
+                        <textarea class="form-control" id="comment" name="comment" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Контейнер для уведомлений -->
+<div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 9999;"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/payments.js"></script>
+{% endblock %}
