@@ -463,6 +463,7 @@ def calculate_advance_for_future_bookings(db: Session, apartment_title: str, sel
     """
     Рассчитать сумму авансов на будущие заселения
     Для заселений после выбранной даты
+    считает сумму всех предоплат на будущие заселения по данному объекту после выбранной даты
     """
     future_bookings = db.query(Booking).filter(
         and_(

@@ -107,6 +107,27 @@
     .table tbody tr.border-bottom-thick td {
         border-bottom: 3px solid #000 !important;
     }
+    
+    /* Стили для кликабельного адреса */
+    .address-cell {
+        cursor: pointer !important;
+        position: relative;
+    }
+    
+    .address-cell:hover {
+        background-color: #f0f8ff !important;
+    }
+    
+    .address-link {
+        color: #0d6efd;
+        text-decoration: none;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    
+    .address-link:hover {
+        text-decoration: underline;
+    }
 </style>
 {% endblock %}
 
@@ -178,7 +199,11 @@
                         data-has-duplicate="{{ group.has_duplicate }}"
                         data-is-first="{{ group.is_first_in_group }}"
                         data-is-last="{{ group.is_last_in_group }}">
-                        <td style="font-weight: bold; text-transform: uppercase;">{{ group.address or '' }}</td>
+                        <td class="address-cell" 
+                            data-checkout-id="{{ group.checkout.id if group.checkout else '' }}" 
+                            data-checkin-id="{{ group.checkin.id if group.checkin else '' }}">
+                            <span class="address-link">{{ group.address or '' }}</span>
+                        </td>
                         <td>
                             {% if group.checkout and group.checkin %}
                                 <span class="badge bg-warning">Выс/Зас</span>

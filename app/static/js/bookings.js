@@ -5,6 +5,7 @@
  * - Редактирование комментариев
  */
 
+
 // Константы
 const STORAGE_KEY = 'bookings_table_column_widths';
 const DEFAULT_COLUMN_WIDTHS = {
@@ -489,6 +490,71 @@ function updateServiceTotal(bookingId) {
 }
 
 /**
+ * Инициализация обработчиков кликов по адресу
+ */
+function initAddressClickHandlers() {
+    const addressCells = document.querySelectorAll('.address-cell');
+    
+    addressCells.forEach(function(cell) {
+        const checkoutId = cell.getAttribute('data-checkout-id');
+        const checkinId = cell.getAttribute('data-checkin-id');
+        
+        // Если нет ни одного ID, пропускаем
+        if (!checkoutId && !checkinId) {
+            return;
+        }
+        
+        // Если только один ID - сразу открываем ссылку при клике
+        if ((checkoutId && !checkinId) || (!checkoutId && checkinId)) {
+            const bookingId = checkoutId || checkinId;
+            cell.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.open(`https://realtycalendar.ru/chessmate/event/${bookingId}`, '_blank');
+            });
+        }
+        // Если оба ID есть - показываем popover с выбором
+        else if (checkoutId && checkinId) {
+            // Создаем контент popover с двумя ссылками
+            const popoverContent = `
+                <div style="min-width: 200px;">
+                    <div style="margin-bottom: 10px;">
+                        <strong>Выберите бронирование:</strong>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <a href="https://realtycalendar.ru/chessmate/event/${checkoutId}" 
+                           target="_blank" 
+                           class="btn btn-sm btn-info">
+                            <i class="bi bi-box-arrow-up-right"></i> Выселение
+                        </a>
+                        <a href="https://realtycalendar.ru/chessmate/event/${checkinId}" 
+                           target="_blank" 
+                           class="btn btn-sm btn-success">
+                            <i class="bi bi-box-arrow-up-right"></i> Заселение
+                        </a>
+                    </div>
+                </div>
+            `;
+            
+            // Инициализируем popover
+            const popover = new bootstrap.Popover(cell, {
+                trigger: 'click',
+                html: true,
+                placement: 'right',
+                content: popoverContent,
+                sanitize: false
+            });
+            
+            // Закрываем popover при клике вне его
+            document.addEventListener('click', function(e) {
+                if (!cell.contains(e.target)) {
+                    popover.hide();
+                }
+            });
+        }
+    });
+}
+
+/**
  * Инициализация обработчиков услуг
  */
 function initServicesHandlers() {
@@ -590,6 +656,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Инициализируем обработчики услуг
     initServicesHandlers();
+    
+    // Инициализируем обработчики кликов по адресу
+    initAddressClickHandlers();
     
     // Обработчик кнопки сброса ширины столбцов
     const resetWidthsBtn = document.getElementById('resetColumnWidthsBtn');
