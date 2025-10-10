@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     postgres_db: Optional[str] = None
     postgres_port: Optional[int] = None
     postgres_host: Optional[str] = None
+    port: Optional[int]=None
 
     class Config:
         env_file = ".env"
