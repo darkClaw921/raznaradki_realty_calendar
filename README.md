@@ -85,7 +85,7 @@ docker-compose down
 ./run.sh
 
 # Или напрямую
-uv run main.py
+uv run raz.py
 ```
 
 #### Производственный режим
