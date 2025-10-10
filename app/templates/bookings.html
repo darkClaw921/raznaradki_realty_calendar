@@ -41,6 +41,11 @@
     }
     
     /* Стили для таблицы бронирований */
+    .table {
+        table-layout: fixed;
+        width: auto !important;
+    }
+    
     .table thead tr:first-child th {
         background-color: rgb(245, 245, 245) !important;
     }
@@ -124,6 +129,9 @@
                 <a href="/export{% if filter_date %}?filter_date={{ filter_date }}{% endif %}" class="btn btn-success">
                     <i class="bi bi-file-earmark-excel"></i> Экспорт в Excel
                 </a>
+                <button type="button" class="btn btn-outline-secondary" id="resetColumnWidthsBtn">
+                    <i class="bi bi-arrow-clockwise"></i> Сбросить ширину столбцов
+                </button>
             </div>
         </form>
     </div>
@@ -144,23 +152,23 @@
                         <th colspan="10">Заселение</th>
                     </tr>
                     <tr>
-                        <th style="width: 12%;">Адрес</th>
-                        <th style="width: 8%;">Статус дома</th>
+                        <th>Адрес</th>
+                        <th>Статус дома</th>
                         <!-- Выселение -->
-                        <th style="width: 10%;">ФИО</th>
-                        <th style="width: 10%;">Телефон</th>
-                        <th style="width: 12%;">Комментарий</th>
+                        <th>ФИО</th>
+                        <th>Телефон</th>
+                        <th>Комментарий</th>
                         <!-- Заселение -->
-                        <th style="width: 8%;">ФИО</th>
-                        <th style="width: 8%;">Телефон</th>
-                        <th style="width: 8%;">Дата выселения</th>
-                        <th style="width: 6%;">Кол-во дней</th>
-                        <th style="width: 8%;">Общая сумма</th>
-                        <th style="width: 8%;">Предоплата</th>
-                        <th style="width: 8%;">Доплата</th>
-                        <th style="width: 8%;">Доп. услуги</th>
-                        <th style="width: 12%;">Комментарий</th>
-                        <th style="width: 14%;">Комментарии по оплате и проживанию в день заселения</th>
+                        <th>ФИО</th>
+                        <th>Телефон</th>
+                        <th>Дата выселения</th>
+                        <th>Кол-во дней</th>
+                        <th>Общая сумма</th>
+                        <th>Предоплата</th>
+                        <th>Доплата</th>
+                        <th>Доп. услуги</th>
+                        <th>Комментарий</th>
+                        <th>Комментарии по оплате и проживанию в день заселения</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -289,353 +297,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing services functionality...');
-    console.log('Bootstrap available:', typeof bootstrap !== 'undefined');
-    
-    let currentBookingId = null;
-    let availableServices = [];
-    
-    // Функция форматирования числа с разделителем тысяч
-    function formatNumber(num) {
-        if (num === null || num === undefined) return '0';
-        return Math.round(num).toLocaleString('en-US').replace(/,/g, ',');
-    }
-    
-    // Обработка редактирования комментариев
-    const editableComments = document.querySelectorAll('.editable-comment');
-    
-    editableComments.forEach(function(container) {
-        const textarea = container.querySelector('.comment-textarea');
-        const saveBtn = container.querySelector('.save-comment-btn');
-        const bookingId = container.getAttribute('data-booking-id');
-        const originalValue = textarea.value;
-        
-        // Показываем кнопку при изменении
-        textarea.addEventListener('input', function() {
-            if (textarea.value !== originalValue) {
-                saveBtn.style.display = 'inline-block';
-            } else {
-                saveBtn.style.display = 'none';
-            }
-        });
-        
-        // Сохранение комментария
-        saveBtn.addEventListener('click', function() {
-            const comments = textarea.value;
-            
-            // Отправляем данные на сервер
-            const formData = new FormData();
-            formData.append('booking_id', bookingId);
-            formData.append('comments', comments);
-            
-            fetch('/update-checkin-comment', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    // Скрываем кнопку
-                    saveBtn.style.display = 'none';
-                    // Обновляем исходное значение
-                    textarea.setAttribute('data-original', comments);
-                    // Показываем уведомление
-                    showNotification('Комментарий успешно сохранен', 'success');
-                } else {
-                    showNotification('Ошибка при сохранении', 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showNotification('Ошибка при сохранении', 'danger');
-            });
-        });
-    });
-    
-    // Обработка клика по ячейке с услугами
-    const servicesCells = document.querySelectorAll('.services-cell');
-    console.log('Found services cells:', servicesCells.length);
-    
-    servicesCells.forEach(function(cell) {
-        const totalDiv = cell.querySelector('.services-total');
-        if (totalDiv) {
-            const bookingId = cell.getAttribute('data-booking-id');
-            console.log('Adding click handler to cell with booking ID:', bookingId);
-            
-            // Инициализируем popover
-            const popover = new bootstrap.Popover(totalDiv, {
-                trigger: 'hover focus',
-                html: true,
-                placement: 'left',
-                content: 'Загрузка...',
-                sanitize: false
-            });
-            
-            // При наведении загружаем и показываем список услуг
-            totalDiv.addEventListener('mouseenter', function() {
-                loadServicesForPopover(bookingId, totalDiv, popover);
-            });
-            
-            // При клике открываем модальное окно
-            totalDiv.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                // Скрываем popover при клике
-                popover.hide();
-                console.log('Services cell clicked for booking:', bookingId);
-                currentBookingId = bookingId;
-                openServicesModal(currentBookingId);
-            });
-        } else {
-            console.warn('Total div not found in cell');
-        }
-    });
-    
-    // Загружаем список услуг при загрузке страницы
-    loadAvailableServices();
-    
-    // Загружаем суммы услуг для всех бронирований (после того как servicesCells определена)
-    loadAllServicesTotal();
-    
-    // Добавление услуги
-    const addServiceBtn = document.getElementById('addServiceBtn');
-    if (addServiceBtn) {
-        addServiceBtn.addEventListener('click', function() {
-            const serviceId = document.getElementById('serviceSelect').value;
-            const price = document.getElementById('servicePrice').value;
-            
-            if (!serviceId || !price) {
-                showNotification('Выберите услугу и укажите цену', 'warning');
-                return;
-            }
-            
-            addService(currentBookingId, serviceId, price);
-        });
-    }
-    
-    // Функции для работы с услугами
-    function loadAvailableServices() {
-        fetch('/services')
-            .then(response => response.json())
-            .then(data => {
-                availableServices = data.services;
-                populateServiceSelect();
-            })
-            .catch(error => {
-                console.error('Error loading services:', error);
-            });
-    }
-    
-    function populateServiceSelect() {
-        const select = document.getElementById('serviceSelect');
-        select.innerHTML = '<option value="">Выберите услугу...</option>';
-        availableServices.forEach(service => {
-            const option = document.createElement('option');
-            option.value = service.id;
-            option.textContent = service.name;
-            select.appendChild(option);
-        });
-    }
-    
-    function loadAllServicesTotal() {
-        servicesCells.forEach(function(cell) {
-            const bookingId = cell.getAttribute('data-booking-id');
-            fetch(`/booking-services/${bookingId}`)
-                .then(response => response.json())
-                .then(data => {
-                    const totalSpan = cell.querySelector('.total-amount');
-                    totalSpan.textContent = formatNumber(data.total);
-                })
-                .catch(error => {
-                    console.error('Error loading services total:', error);
-                });
-        });
-    }
-    
-    function loadServicesForPopover(bookingId, element, popoverInstance) {
-        fetch(`/booking-services/${bookingId}`)
-            .then(response => response.json())
-            .then(data => {
-                let content = '';
-                
-                if (data.services.length === 0) {
-                    content = '<div style="color: #6c757d; font-style: italic;">Нет добавленных услуг</div>';
-                } else {
-                    content = '<div>';
-                    data.services.forEach(service => {
-                        content += `
-                            <div class="service-item">
-                                <span><strong>${service.service_name}</strong></span>
-                                <span>${formatNumber(service.price)}</span>
-                            </div>
-                        `;
-                    });
-                    content += `
-                        <div style="margin-top: 10px; padding-top: 10px; border-top: 2px solid #dee2e6;">
-                            <strong>Итого: ${formatNumber(data.total)}</strong>
-                        </div>
-                    `;
-                    content += '</div>';
-                }
-                
-                // Обновляем содержимое popover
-                const popoverTip = bootstrap.Popover.getInstance(element);
-                if (popoverTip) {
-                    popoverTip.setContent({
-                        '.popover-body': content
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Error loading services for popover:', error);
-                const popoverTip = bootstrap.Popover.getInstance(element);
-                if (popoverTip) {
-                    popoverTip.setContent({
-                        '.popover-body': '<div style="color: red;">Ошибка загрузки</div>'
-                    });
-                }
-            });
-    }
-    
-    function openServicesModal(bookingId) {
-        console.log('Opening services modal for booking:', bookingId);
-        const modalElement = document.getElementById('servicesModal');
-        if (!modalElement) {
-            console.error('Modal element not found!');
-            showNotification('Ошибка: модальное окно не найдено', 'danger');
-            return;
-        }
-        
-        loadBookingServices(bookingId);
-        const modal = new bootstrap.Modal(modalElement);
-        modal.show();
-    }
-    
-    function loadBookingServices(bookingId) {
-        fetch(`/booking-services/${bookingId}`)
-            .then(response => response.json())
-            .then(data => {
-                displayServices(data.services);
-                document.getElementById('servicesTotal').textContent = formatNumber(data.total);
-            })
-            .catch(error => {
-                console.error('Error loading booking services:', error);
-            });
-    }
-    
-    function displayServices(services) {
-        const listDiv = document.getElementById('servicesList');
-        
-        if (services.length === 0) {
-            listDiv.innerHTML = '<p class="text-muted">Нет добавленных услуг</p>';
-            return;
-        }
-        
-        let html = '<div class="list-group">';
-        services.forEach(service => {
-            html += `
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong>${service.service_name}</strong>
-                        <span class="text-muted ms-2">${formatNumber(service.price)}</span>
-                    </div>
-                    <button class="btn btn-sm btn-danger" onclick="deleteService(${service.id})">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            `;
-        });
-        html += '</div>';
-        listDiv.innerHTML = html;
-    }
-    
-    function addService(bookingId, serviceId, price) {
-        const formData = new FormData();
-        formData.append('booking_id', bookingId);
-        formData.append('service_id', serviceId);
-        formData.append('price', price);
-        
-        fetch('/booking-services', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                showNotification('Услуга добавлена', 'success');
-                loadBookingServices(bookingId);
-                updateServiceTotal(bookingId);
-                // Очищаем форму
-                document.getElementById('serviceSelect').value = '';
-                document.getElementById('servicePrice').value = '';
-            } else {
-                showNotification('Ошибка при добавлении услуги', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error adding service:', error);
-            showNotification('Ошибка при добавлении услуги', 'danger');
-        });
-    }
-    
-    window.deleteService = function(serviceId) {
-        if (!confirm('Удалить эту услугу?')) {
-            return;
-        }
-        
-        fetch(`/booking-services/${serviceId}`, {
-            method: 'DELETE'
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                showNotification('Услуга удалена', 'success');
-                loadBookingServices(currentBookingId);
-                updateServiceTotal(currentBookingId);
-            } else {
-                showNotification('Ошибка при удалении услуги', 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error deleting service:', error);
-            showNotification('Ошибка при удалении услуги', 'danger');
-        });
-    }
-    
-    function updateServiceTotal(bookingId) {
-        fetch(`/booking-services/${bookingId}`)
-            .then(response => response.json())
-            .then(data => {
-                const cell = document.querySelector(`.services-cell[data-booking-id="${bookingId}"]`);
-                if (cell) {
-                    const totalSpan = cell.querySelector('.total-amount');
-                    totalSpan.textContent = formatNumber(data.total);
-                }
-            })
-            .catch(error => {
-                console.error('Error updating service total:', error);
-            });
-    }
-    
-    // Функция для показа уведомлений
-    function showNotification(message, type) {
-        const notification = document.createElement('div');
-        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-        notification.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        document.body.appendChild(notification);
-        
-        // Автоматически скрываем через 3 секунды
-        setTimeout(function() {
-            notification.remove();
-        }, 3000);
-    }
-});
-</script>
+<script src="/static/js/bookings.js"></script>
 {% endblock %}
 

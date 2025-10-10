@@ -6,8 +6,7 @@ import sys
 
 from app.database import init_db
 from app.routers import webhook, web
-
-
+from prometheus_fastapi_instrumentator import Instrumentator
 # Настройка логирования через loguru
 logger.remove()  # Удаляем стандартный обработчик
 logger.add(
@@ -59,6 +58,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+Instrumentator().instrument(app).expose(app)
+
+# Подключение статических файлов
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Подключение роутеров
 app.include_router(webhook.router)

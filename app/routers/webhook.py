@@ -50,9 +50,9 @@ def process_webhook(db: Session, webhook_data: WebhookRequestSchema) -> dict:
     """
     Обработка одного webhook запроса
     """
-    action = webhook_data.body.action
-    status = webhook_data.body.status
-    booking_data = webhook_data.body.data.booking
+    action = webhook_data.action
+    status = webhook_data.status
+    booking_data = webhook_data.data.booking
     
     logger.info(f"Обработка действия: {action} для бронирования ID: {booking_data.id}")
     

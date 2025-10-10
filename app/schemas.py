@@ -48,6 +48,9 @@ class ClientSchema(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     additional_phone: Optional[str] = None
+    
+    class Config:
+        extra = "ignore"  # Игнорируем дополнительные поля
 
 
 class ApartmentSchema(BaseModel):
@@ -55,6 +58,9 @@ class ApartmentSchema(BaseModel):
     id: int
     title: Optional[str] = None
     address: Optional[str] = None
+    
+    class Config:
+        extra = "ignore"  # Игнорируем дополнительные поля
 
 
 class BookingSchema(BaseModel):
@@ -78,21 +84,29 @@ class BookingSchema(BaseModel):
     is_delete: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    
+    class Config:
+        extra = "ignore"  # Игнорируем дополнительные поля (payments_with_deleted, url и т.д.)
 
 
 class WebhookDataSchema(BaseModel):
     """Схема данных внутри webhook body"""
     booking: BookingSchema
+    
+    class Config:
+        extra = "ignore"  # Игнорируем дополнительные поля
 
 
 class WebhookPayloadSchema(BaseModel):
-    """Полная схема webhook payload"""
+    """Полная схема webhook payload - игнорируем дополнительные поля"""
     action: str
     status: str
     data: WebhookDataSchema
+    
+    class Config:
+        extra = "ignore"  # Игнорируем дополнительные поля вроде changes, crm_entity_id и т.д.
 
 
-class WebhookRequestSchema(BaseModel):
-    """Схема входящего webhook запроса (массив)"""
-    body: WebhookPayloadSchema
+# WebhookRequestSchema теперь алиас для WebhookPayloadSchema (данные приходят напрямую без обёртки body)
+WebhookRequestSchema = WebhookPayloadSchema
 
