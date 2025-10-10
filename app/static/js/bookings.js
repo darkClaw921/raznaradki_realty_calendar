@@ -15,7 +15,7 @@ const DEFAULT_COLUMN_WIDTHS = {
     3: 152,  // Телефон (выс)
     4: 167,  // Комментарий (выс)
     5: 99,   // ФИО (зас)
-    6: 120,  // Телефон (зас)
+    6: 158,  // Телефон (зас)
     7: 100,  // Дата выселения
     8: 100,  // Кол-во дней
     9: 100,  // Общая сумма
@@ -523,12 +523,14 @@ function initAddressClickHandlers() {
                     <div class="d-grid gap-2">
                         <a href="https://realtycalendar.ru/chessmate/event/${checkoutId}" 
                            target="_blank" 
-                           class="btn btn-sm btn-info">
+                           class="btn btn-sm"
+                           style="background-color: #ffcccc; border-color: #ffcccc; color: #000;">
                             <i class="bi bi-box-arrow-up-right"></i> Выселение
                         </a>
                         <a href="https://realtycalendar.ru/chessmate/event/${checkinId}" 
                            target="_blank" 
-                           class="btn btn-sm btn-success">
+                           class="btn btn-sm"
+                           style="background-color: #ccffcc; border-color: #ccffcc; color: #000;">
                             <i class="bi bi-box-arrow-up-right"></i> Заселение
                         </a>
                     </div>
