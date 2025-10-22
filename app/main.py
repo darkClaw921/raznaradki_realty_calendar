@@ -7,7 +7,7 @@ from loguru import logger
 import sys
 
 from app.database import init_db
-from app.routers import webhook, web, payments
+from app.routers import webhook, web, payments, services
 from prometheus_fastapi_instrumentator import Instrumentator
 # Настройка логирования через loguru
 logger.remove()  # Удаляем стандартный обработчик
@@ -121,6 +121,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(webhook.router)
 app.include_router(web.router)
 app.include_router(payments.router)
+app.include_router(services.router)
 
 
 @app.get("/health")

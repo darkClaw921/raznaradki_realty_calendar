@@ -302,6 +302,46 @@ def create_service(db: Session, name: str) -> Service:
     return service
 
 
+def get_service_by_id(db: Session, service_id: int) -> Optional[Service]:
+    """
+    Получить услугу по ID
+    """
+    return db.query(Service).filter(Service.id == service_id).first()
+
+
+def update_service(db: Session, service_id: int, name: str) -> Optional[Service]:
+    """
+    Обновить название услуги
+    """
+    service = db.query(Service).filter(Service.id == service_id).first()
+    if not service:
+        return None
+    
+    service.name = name
+    service.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(service)
+    logger.info(f"Обновлена услуга ID {service_id}: {name}")
+    return service
+
+
+def toggle_service_status(db: Session, service_id: int) -> Optional[Service]:
+    """
+    Переключить статус активности услуги (активировать/деактивировать)
+    """
+    service = db.query(Service).filter(Service.id == service_id).first()
+    if not service:
+        return None
+    
+    service.is_active = not service.is_active
+    service.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(service)
+    status = "активирована" if service.is_active else "деактивирована"
+    logger.info(f"Услуга ID {service_id} {status}")
+    return service
+
+
 def get_booking_services(db: Session, booking_id: int) -> List[dict]:
     """
     Получить все услуги для конкретного бронирования

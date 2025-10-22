@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Управление услугами - DMD Cottage{% endblock %}
+
+{% block extra_css %}
+<style>
+    .inactive-service {
+        background-color: #f0f0f0;
+        color: #888;
+    }
+    
+    .service-status-badge {
+        font-size: 0.85rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4>
+            <i class="bi bi-gear-fill"></i> Управление услугами
+            <span class="badge bg-primary">{{ services|length }}</span>
+        </h4>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addServiceModal">
+            <i class="bi bi-plus-lg"></i> Добавить услугу
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">ID</th>
+                    <th style="width: 50%;">Название услуги</th>
+                    <th style="width: 15%;">Статус</th>
+                    <th style="width: 15%;">Дата создания</th>
+                    <th style="width: 15%;">Действия</th>
+                </tr>
+            </thead>
+            <tbody id="servicesTableBody">
+                {% for service in services %}
+                <tr class="{% if not service.is_active %}inactive-service{% endif %}" data-service-id="{{ service.id }}">
+                    <td>{{ service.id }}</td>
+                    <td class="service-name">{{ service.name }}</td>
+                    <td>
+                        {% if service.is_active %}
+                        <span class="badge bg-success service-status-badge">Активна</span>
+                        {% else %}
+                        <span class="badge bg-secondary service-status-badge">Неактивна</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ service.created_at.strftime('%d.%m.%Y %H:%M') if service.created_at else '' }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary edit-service-btn" 
+                                data-service-id="{{ service.id }}" 
+                                data-service-name="{{ service.name }}">
+                            <i class="bi bi-pencil"></i> Изменить
+                        </button>
+                        {% if service.is_active %}
+                        <button class="btn btn-sm btn-outline-warning toggle-status-btn" 
+                                data-service-id="{{ service.id }}">
+                            <i class="bi bi-x-circle"></i> Деактивировать
+                        </button>
+                        {% else %}
+                        <button class="btn btn-sm btn-outline-success toggle-status-btn" 
+                                data-service-id="{{ service.id }}">
+                            <i class="bi bi-check-circle"></i> Активировать
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Модальное окно добавления услуги -->
+<div class="modal fade" id="addServiceModal" tabindex="-1" aria-labelledby="addServiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addServiceModalLabel">
+                    <i class="bi bi-plus-circle"></i> Добавить новую услугу
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addServiceForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="serviceName" class="form-label">Название услуги</label>
+                        <input type="text" class="form-control" id="serviceName" name="name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Создать
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования услуги -->
+<div class="modal fade" id="editServiceModal" tabindex="-1" aria-labelledby="editServiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editServiceModalLabel">
+                    <i class="bi bi-pencil"></i> Редактировать услугу
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editServiceForm">
+                <input type="hidden" id="editServiceId" name="service_id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editServiceName" class="form-label">Название услуги</label>
+                        <input type="text" class="form-control" id="editServiceName" name="name" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Сохранить
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/services.js"></script>
+{% endblock %}
+
