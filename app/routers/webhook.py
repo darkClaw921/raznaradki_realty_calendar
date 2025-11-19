@@ -43,13 +43,16 @@ async def receive_webhook(
             
     except Exception as e:
         logger.error(f"Ошибка обработки webhook: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Ошибка обработки данных: {str(e)}")
+        #200 необходим для совместимости. Не убирать  
+        raise HTTPException(status_code=200, detail=f"Ошибка обработки данных: {str(e)}")
 
 
 def process_webhook(db: Session, webhook_data: WebhookRequestSchema) -> dict:
     """
     Обработка одного webhook запроса
     """
+
+    
     action = webhook_data.action
     status = webhook_data.status
     booking_data = webhook_data.data.booking
@@ -61,7 +64,8 @@ def process_webhook(db: Session, webhook_data: WebhookRequestSchema) -> dict:
     else:
         # create_booking или update_booking
         booking = create_or_update_booking(db, booking_data, action, status)
-    
+
+        
     return {
         "action": action,
         "booking_id": booking.id,
