@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
-from app.models import Booking, Service, BookingService, Payment
-from app.schemas import BookingSchema, PaymentCreate, PaymentUpdate
+from app.models import Booking, Service, BookingService, Payment, MonthlyPlan
+from app.schemas import BookingSchema, PaymentCreate, PaymentUpdate, MonthlyPlanCreate, MonthlyPlanUpdate
 from datetime import date, datetime
 from typing import Optional, List
 from loguru import logger
@@ -118,6 +118,43 @@ def get_bookings(
     query = query.order_by(Booking.begin_date.desc(), Booking.id.desc())
     
     return query.offset(skip).limit(limit).all()
+
+
+def get_bookings_by_begin_date(
+    db: Session,
+    filter_date: Optional[date] = None,
+    filter_date_from: Optional[date] = None,
+    filter_date_to: Optional[date] = None,
+    apartment_title: Optional[str] = None
+) -> List[Booking]:
+    """
+    Получить бронирования по begin_date (используется для расчета факта заселений)
+    При указании apartment_title учитываем сам объект и его дубли (название с суффиксом ДУБЛЬ)
+    """
+    query = db.query(Booking).filter(Booking.is_delete == False)
+
+    if filter_date:
+        query = query.filter(Booking.begin_date == filter_date)
+    elif filter_date_from or filter_date_to:
+        if filter_date_from:
+            query = query.filter(Booking.begin_date >= filter_date_from)
+        if filter_date_to:
+            query = query.filter(Booking.begin_date <= filter_date_to)
+
+    if apartment_title:
+        base_title = apartment_title.strip()
+        if base_title:
+            base_upper = base_title.upper()
+            duplicate_pattern = f"{base_upper} %ДУБ%"
+            query = query.filter(
+                or_(
+                    func.upper(Booking.apartment_title) == base_upper,
+                    func.upper(Booking.apartment_title).like(duplicate_pattern)
+                )
+            )
+
+    query = query.order_by(Booking.begin_date.desc())
+    return query.all()
 
 
 def get_booking_by_id(db: Session, booking_id: int) -> Optional[Booking]:
@@ -368,10 +405,17 @@ def add_booking_service(db: Session, booking_id: int, service_id: int, price: fl
     """
     Добавить услугу к бронированию
     """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise ValueError(f"Бронирование ID {booking_id} не найдено")
+    
+    service_created_at = datetime.combine(booking.begin_date, datetime.min.time()) if booking.begin_date else datetime.utcnow()
+    
     booking_service = BookingService(
         booking_id=booking_id,
         service_id=service_id,
-        price=price
+        price=price,
+        created_at=service_created_at
     )
     db.add(booking_service)
     db.commit()
@@ -499,28 +543,6 @@ def delete_payment(db: Session, payment_id: int) -> bool:
     return True
 
 
-def calculate_advance_for_future_bookings(db: Session, apartment_title: str, selected_date: date) -> float:
-    """
-    Рассчитать сумму авансов на будущие заселения
-    Для заселений после выбранной даты
-    считает сумму всех предоплат на будущие заселения по данному объекту после выбранной даты
-    """
-    future_bookings = db.query(Booking).filter(
-        and_(
-            Booking.apartment_title == apartment_title,
-            Booking.begin_date > selected_date,
-            Booking.is_delete == False
-        )
-    ).all()
-    
-    total_advance = 0.0
-    for booking in future_bookings:
-        if booking.prepayment:
-            total_advance += float(booking.prepayment)
-    
-    return total_advance
-
-
 def get_unique_apartments(db: Session) -> List[str]:
     """
     Получить список уникальных объектов недвижимости
@@ -586,7 +608,8 @@ def get_booking_services_as_payments(
     db: Session,
     filter_date: Optional[date] = None,
     filter_date_from: Optional[date] = None,
-    filter_date_to: Optional[date] = None
+    filter_date_to: Optional[date] = None,
+    apartment_title: Optional[str] = None
 ) -> List[dict]:
     """
     Получить все услуги из booking_services в формате поступлений
@@ -615,6 +638,9 @@ def get_booking_services_as_payments(
             query = query.filter(Booking.begin_date >= filter_date_from)
         if filter_date_to:
             query = query.filter(Booking.begin_date <= filter_date_to)
+
+    if apartment_title:
+        query = query.filter(Booking.apartment_title == apartment_title)
     
     booking_services = query.all()
     
@@ -648,3 +674,68 @@ def get_booking_services_as_payments(
     
     return result
 
+
+# CRUD для месячных планов
+def create_monthly_plan(db: Session, plan_data: MonthlyPlanCreate) -> MonthlyPlan:
+    """
+    Создать новый месячный план
+    """
+    plan = MonthlyPlan(**plan_data.model_dump())
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    logger.info(f"Создан новый план ID: {plan.id} на период {plan.start_date} - {plan.end_date}")
+    return plan
+
+
+def get_all_plans(db: Session) -> List[MonthlyPlan]:
+    """
+    Получить список всех планов
+    """
+    return db.query(MonthlyPlan).order_by(MonthlyPlan.start_date.desc()).all()
+
+
+def get_active_plan_for_period(db: Session, start_date: date, end_date: date) -> Optional[MonthlyPlan]:
+    """
+    Найти активный план для заданного периода (пересечение дат)
+    """
+    plan = db.query(MonthlyPlan).filter(
+        and_(
+            MonthlyPlan.start_date <= end_date,
+            MonthlyPlan.end_date >= start_date
+        )
+    ).first()
+    return plan
+
+
+def update_monthly_plan(db: Session, plan_id: int, plan_data: MonthlyPlanUpdate) -> Optional[MonthlyPlan]:
+    """
+    Обновить месячный план
+    """
+    plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
+    if not plan:
+        return None
+    
+    update_data = plan_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(plan, key, value)
+    
+    plan.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(plan)
+    logger.info(f"Обновлен план ID: {plan_id}")
+    return plan
+
+
+def delete_monthly_plan(db: Session, plan_id: int) -> bool:
+    """
+    Удалить месячный план
+    """
+    plan = db.query(MonthlyPlan).filter(MonthlyPlan.id == plan_id).first()
+    if not plan:
+        return False
+    
+    db.delete(plan)
+    db.commit()
+    logger.info(f"Удален план ID: {plan_id}")
+    return True

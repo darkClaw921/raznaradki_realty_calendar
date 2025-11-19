@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str
     admin_username: str = "admin"
     admin_password: str = "admin"
+    user_username: str = "user"
+    user_password: str = "user"
     secret_key: str
     
     # Опциональные переменные для PostgreSQL (для docker-compose)
@@ -27,4 +29,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Получить настройки приложения (кешируется)"""
     return Settings()
-

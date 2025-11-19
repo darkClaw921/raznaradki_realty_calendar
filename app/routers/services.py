@@ -13,16 +13,11 @@ from app.crud import (
 )
 from app.config import get_settings
 from loguru import logger
+from app.routers.web import check_auth
 
 router = APIRouter(tags=["services"])
 templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
-
-
-def check_auth(request: Request) -> bool:
-    """Проверка авторизации через session cookie"""
-    session_token = request.cookies.get("session_token")
-    return session_token == settings.secret_key
 
 
 @router.get("/services-management", response_class=HTMLResponse)
@@ -34,8 +29,12 @@ async def services_management_page(
     Страница управления услугами
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         return RedirectResponse(url="/login", status_code=302)
+    
+    if user_type != 'admin':
+        return RedirectResponse(url="/bookings", status_code=302)
     
     # Получаем все услуги (активные и неактивные)
     services = get_all_services(db, active_only=False)
@@ -46,7 +45,8 @@ async def services_management_page(
         "services_management.html",
         {
             "request": request,
-            "services": services
+            "services": services,
+            "user_type": user_type
         }
     )
 
@@ -60,8 +60,12 @@ async def get_services_list_json(
     Получить список всех услуг в JSON (активные и неактивные)
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    if user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Access denied")
     
     services = get_all_services(db, active_only=False)
     
@@ -89,8 +93,12 @@ async def create_service_endpoint(
     Создать новую услугу
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    if user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Access denied")
     
     try:
         # Проверка что название не пустое
@@ -128,8 +136,12 @@ async def update_service_endpoint(
     Обновить услугу
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    if user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Access denied")
     
     try:
         # Проверка что название не пустое
@@ -171,8 +183,12 @@ async def toggle_service_status_endpoint(
     Переключить статус активности услуги (активировать/деактивировать)
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    if user_type != 'admin':
+        raise HTTPException(status_code=403, detail="Access denied")
     
     try:
         service = toggle_service_status(db, service_id)
@@ -197,4 +213,3 @@ async def toggle_service_status_endpoint(
             status_code=500,
             content={"status": "error", "message": f"Ошибка при переключении статуса услуги: {str(e)}"}
         )
-

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Управление планами - DMD Cottage{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="bi bi-calendar-check"></i> Управление планами</h4>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPlanModal">
+            <i class="bi bi-plus-circle"></i> Добавить план
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover table-bordered">
+            <thead>
+                <tr>
+                    <th>Период</th>
+                    <th>Целевая сумма</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="plansTableBody">
+                {% if plans %}
+                    {% for plan in plans %}
+                    <tr data-plan-id="{{ plan.id }}">
+                        <td>{{ plan.start_date.strftime('%d.%m.%Y') }} - {{ plan.end_date.strftime('%d.%m.%Y') }}</td>
+                        <td style="text-align: right;">{{ '{:,.0f}'.format(plan.target_amount).replace(',', ' ') }}</td>
+                        <td class="actions-column">
+                            <button type="button" class="btn btn-warning btn-sm edit-plan" data-plan-id="{{ plan.id }}" data-start-date="{{ plan.start_date }}" data-end-date="{{ plan.end_date }}" data-target-amount="{{ plan.target_amount }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm delete-plan ms-1" data-plan-id="{{ plan.id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center">Нет планов</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления/редактирования плана -->
+<div class="modal fade" id="addPlanModal" tabindex="-1" aria-labelledby="addPlanModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addPlanModalLabel">Добавить план</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addPlanForm">
+                <div class="modal-body">
+                    <input type="hidden" id="plan_id" name="plan_id" value="">
+                    <div class="mb-3">
+                        <label for="start_date" class="form-label">Дата с *</label>
+                        <input type="date" class="form-control" id="start_date" name="start_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="end_date" class="form-label">Дата по *</label>
+                        <input type="date" class="form-control" id="end_date" name="end_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="target_amount" class="form-label">Целевая сумма *</label>
+                        <input type="number" step="0.01" class="form-control" id="target_amount" name="target_amount" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Контейнер для уведомлений -->
+<div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 9999;"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/plans.js"></script>
+{% endblock %}

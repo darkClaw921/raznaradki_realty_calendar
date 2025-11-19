@@ -4,7 +4,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Инициализация
     initAddPaymentForm();
     initDeleteButtons();
-    initCalculateAdvance();
     initBookingSelect();
     
     // Установить сегодняшнюю дату по умолчанию
@@ -13,7 +12,6 @@ document.addEventListener('DOMContentLoaded', function() {
         receiptDateInput.valueAsDate = new Date();
     }
 });
-
 
 /**
  * Инициализация выбора бронирования
@@ -83,7 +81,6 @@ function initBookingSelect() {
     });
 }
 
-
 /**
  * Инициализация формы добавления поступления
  */
@@ -98,7 +95,7 @@ function initAddPaymentForm() {
         
         // Очистка пустых строк для опциональных числовых полей
         // Если поле пустое, удаляем его из formData (будет None на сервере)
-        const numericFields = ['booking_id', 'booking_service_id', 'advance_for_future'];
+        const numericFields = ['booking_id', 'booking_service_id'];
         numericFields.forEach(field => {
             const value = formData.get(field);
             if (value === '' || value === null) {
@@ -135,9 +132,8 @@ function initAddPaymentForm() {
     });
 }
 
-
 /**
- * Инициализация кнопок удаления
+ * Инициализация кнопок удаления поступлений
  */
 function initDeleteButtons() {
     const deleteButtons = document.querySelectorAll('.delete-payment');
@@ -169,7 +165,7 @@ function initDeleteButtons() {
                     // Проверить, есть ли еще записи
                     const tbody = document.getElementById('paymentsTableBody');
                     if (tbody && tbody.querySelectorAll('tr').length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="9" class="text-center">Нет данных для отображения</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" class="text-center">Нет данных для отображения</td></tr>';
                     }
                 } else {
                     showNotification('Ошибка: ' + data.message, 'danger');
@@ -182,60 +178,12 @@ function initDeleteButtons() {
     });
 }
 
-
-/**
- * Инициализация кнопки расчета аванса
- */
-function initCalculateAdvance() {
-    const calculateBtn = document.getElementById('calculateAdvanceBtn');
-    if (!calculateBtn) return;
-    
-    calculateBtn.addEventListener('click', async function() {
-        const apartmentTitle = document.getElementById('apartment_title').value;
-        const receiptDate = document.getElementById('receipt_date').value;
-        
-        if (!apartmentTitle) {
-            showNotification('Выберите объект', 'warning');
-            return;
-        }
-        
-        if (!receiptDate) {
-            showNotification('Выберите дату поступления', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/payments/calculate-advance?apartment_title=${encodeURIComponent(apartmentTitle)}&selected_date=${receiptDate}`);
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                const advanceInput = document.getElementById('advance_for_future');
-                advanceInput.value = data.total_advance.toFixed(2);
-                
-                if (data.total_advance > 0) {
-                    showNotification(`Рассчитана сумма аванса: ${formatNumber(data.total_advance)}`, 'success');
-                } else {
-                    showNotification('Нет будущих заселений с предоплатой', 'info');
-                }
-            } else {
-                showNotification('Ошибка: ' + data.message, 'danger');
-            }
-        } catch (error) {
-            console.error('Ошибка при расчете аванса:', error);
-            showNotification('Ошибка при расчете аванса', 'danger');
-        }
-    });
-}
-
-
 /**
  * Форматирование числа с разделителем тысяч
  */
 function formatNumber(num) {
     return Number(num).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
-
 
 /**
  * Показать уведомление

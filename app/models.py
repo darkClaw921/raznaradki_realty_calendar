@@ -124,3 +124,17 @@ class Payment(Base):
     def __repr__(self):
         return f"<Payment(id={self.id}, apartment_title={self.apartment_title}, receipt_date={self.receipt_date}, amount={self.amount})>"
 
+
+class MonthlyPlan(Base):
+    """Модель месячных планов поступлений"""
+    __tablename__ = "monthly_plans"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+    target_amount = Column(Numeric(10, 2), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<MonthlyPlan(id={self.id}, start_date={self.start_date}, end_date={self.end_date}, target_amount={self.target_amount})>"

@@ -22,18 +22,21 @@ raznaradki_realty_calendar/
 │   │   ├── webhook.py           # Endpoint для webhook
 │   │   ├── web.py               # Web UI endpoints
 │   │   ├── payments.py          # Endpoints для поступлений денег
-│   │   └── services.py          # Endpoints для управления услугами
+│   │   ├── services.py          # Endpoints для управления услугами
+│   │   └── plans.py             # Endpoints для управления планами
 │   ├── static/
 │   │   └── js/
 │   │       ├── bookings.js      # JavaScript для страницы бронирований
 │   │       ├── payments.js      # JavaScript для страницы поступлений
-│   │       └── services.js      # JavaScript для страницы управления услугами
+│   │       ├── services.js      # JavaScript для страницы управления услугами
+│   │       └── plans.js         # JavaScript для страницы управления планами
 │   └── templates/
 │       ├── base.html            # Базовый шаблон с Bootstrap
 │       ├── login.html           # Страница входа
 │       ├── bookings.html        # Таблица бронирований
 │       ├── payments.html        # Таблица поступлений денег
-│       └── services_management.html  # Страница управления услугами
+│       ├── services_management.html  # Страница управления услугами
+│       └── plans.html           # Страница управления планами
 ├── logs/                        # Директория для логов
 ├── cells.json                   # Экспорт таблицы cells из старой БД (для миграции)
 ├── sheets.json                  # Экспорт таблицы sheets из старой БД (для миграции)
@@ -63,14 +66,14 @@ raznaradki_realty_calendar/
   - Возвращает JSON с деталями ошибки
 - Lifecycle management (инициализация БД при запуске)
 - Подключение статических файлов (/static)
-- Подключение роутеров (webhook, web, payments, services)
+- Подключение роутеров (webhook, web, payments, services, plans)
 - Health check endpoint
 
 ### app/config.py
 Управление конфигурацией:
 - Класс Settings на базе Pydantic для загрузки переменных из .env
 - Функция get_settings() с кешированием настроек
-- Переменные: DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD, SECRET_KEY
+- Переменные: DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD, USER_USERNAME, USER_PASSWORD, SECRET_KEY
 
 ### app/database.py
 Настройка подключения к PostgreSQL:
@@ -82,47 +85,61 @@ raznaradki_realty_calendar/
 
 ### app/routers/payments.py
 Роутер для управления поступлениями денег:
-- **check_auth()** - проверка авторизации через session_token cookie, сравнивает с settings.secret_key (внутренняя функция)
-- **GET /payments** - страница с таблицей поступлений денег (требует авторизацию)
+- **check_auth()** - проверка авторизации через session_token cookie и user_type (импорт из web.py), требует user_type == 'admin' для доступа
+- **GET /payments** - страница с таблицей поступлений денег (требует авторизацию admin)
   - Параметры: filter_date (одна дата) или filter_date_from и filter_date_to (диапазон)
   - Объединяет данные из двух источников:
     1. Реальные поступления из таблицы payments
     2. Услуги из таблицы booking_services (отображаются автоматически)
   - Услуги из booking_services выделяются серым фоном и помечены "Услуга" в колонке действий
-  - Автоматический расчет суммы аванса на будущие заселения
-  - Расчет плана/факта в шапке таблицы (только по реальным поступлениям)
-- **POST /payments/create** - создать новое поступление (требует авторизацию)
-  - Принимает данные формы (все как строки): booking_id, booking_service_id, apartment_title, receipt_date, receipt_time, amount, advance_for_future, operation_type, income_category, comment
+  - Расчет плана/факта в шапке таблицы: план берется из активного плана периода, факт считается как сумма `amount` всех бронирований с begin_date внутри выбранного фильтра (конкретная дата или диапазон)
+  - Получение активного плана для периода
+- **POST /payments/create** - создать новое поступление (требует авторизацию admin)
+  - Принимает данные формы (все как строки): booking_id, booking_service_id, apartment_title, receipt_date, receipt_time, amount, operation_type, income_category, comment
   - Автоматическая обработка пустых строк: пустые строки преобразуются в None
   - Логика: если указан booking_id и apartment_title пустой, то apartment_title берется из бронирования автоматически
   - Возвращает JSON с результатом операции
-- **GET /payments/list** - получить список поступлений в JSON (требует авторизацию)
+- **GET /payments/list** - получить список поступлений в JSON (требует авторизацию admin)
   - Параметры filter_date, filter_date_from, filter_date_to, apartment_title для фильтрации
-- **PUT /payments/{payment_id}** - обновить поступление (требует авторизацию)
-- **DELETE /payments/{payment_id}** - удалить поступление (требует авторизацию)
-- **GET /payments/calculate-advance** - рассчитать сумму авансов на будущие заселения (требует авторизацию)
-  - Параметры: apartment_title, selected_date
-  - Возвращает общую сумму предоплат по будущим бронированиям
+- **PUT /payments/{payment_id}** - обновить поступление (требует авторизацию admin)
+- **DELETE /payments/{payment_id}** - удалить поступление (требует авторизацию admin)
 
 ### app/routers/services.py
 Роутер для управления услугами:
-- **check_auth()** - проверка авторизации через session_token cookie (внутренняя функция)
-- **GET /services-management** - страница управления услугами (требует авторизацию)
+- **check_auth()** - проверка авторизации через session_token cookie и user_type (импорт из web.py), требует user_type == 'admin' для доступа
+- **GET /services-management** - страница управления услугами (требует авторизацию admin)
   - Отображает таблицу всех услуг (активные и неактивные)
   - Неактивные услуги выделяются серым фоном
-- **GET /services-management/list** - получить список всех услуг в JSON (требует авторизацию)
+- **GET /services-management/list** - получить список всех услуг в JSON (требует авторизацию admin)
   - Возвращает все услуги с полями: id, name, is_active, created_at, updated_at
-- **POST /services/create** - создать новую услугу (требует авторизацию)
+- **POST /services/create** - создать новую услугу (требует авторизацию admin)
   - Принимает: name (название услуги)
   - Проверяет что название не пустое
   - Возвращает JSON с результатом операции и id созданной услуги
-- **PUT /services/{service_id}** - обновить услугу (требует авторизацию)
+- **PUT /services/{service_id}** - обновить услугу (требует авторизацию admin)
   - Принимает: name (новое название услуги)
   - Проверяет существование услуги
   - Возвращает JSON с результатом операции
-- **DELETE /services/{service_id}** - переключить статус активности услуги (требует авторизацию)
+- **DELETE /services/{service_id}** - переключить статус активности услуги (требует авторизацию admin)
   - Активирует неактивную услугу или деактивирует активную
   - Возвращает JSON с результатом и новым статусом is_active
+
+### app/routers/plans.py
+Роутер для управления планами:
+- **check_auth()** - проверка авторизации через session_token cookie и user_type (импорт из web.py), требует user_type == 'admin' для доступа
+- **GET /plans-management** - страница управления планами (требует авторизацию admin)
+  - Отображает таблицу всех планов
+- **POST /plans/create** - создать новый месячный план (требует авторизацию admin)
+  - Принимает: start_date, end_date, target_amount
+  - Валидация дат и суммы
+  - Возвращает JSON с результатом и ID плана
+- **GET /plans/list** - получить список всех планов в JSON (требует авторизацию admin)
+  - Возвращает все планы с полями: id, start_date, end_date, target_amount, created_at, updated_at
+- **PUT /plans/{plan_id}** - обновить план (требует авторизацию admin)
+  - Принимает опционально: start_date, end_date, target_amount
+  - Возвращает JSON с результатом
+- **DELETE /plans/{plan_id}** - удалить план (требует авторизацию admin)
+  - Возвращает JSON с результатом
 
 ### app/models.py
 SQLAlchemy модели базы данных:
@@ -158,12 +175,18 @@ SQLAlchemy модели базы данных:
   - receipt_date: дата поступления (индексируется)
   - receipt_time: время поступления (опционально)
   - amount: сумма поступления
-  - advance_for_future: сумма аванса на будущее заселение (опционально)
+  - advance_for_future: сумма аванса на будущее заселение (опционально, сохраняется для исторических данных)
   - operation_type: тип операции (наличные, безналичный расчет и т.д., опционально)
   - income_category: статья поступления (название услуги или другая категория, опционально)
   - comment: комментарий (опционально)
   - created_at, updated_at: временные метки
   - Связи: booking (many-to-one), booking_service (many-to-one)
+- **MonthlyPlan** - модель месячных планов поступлений:
+  - id: уникальный идентификатор
+  - start_date: дата начала периода (индексируется)
+  - end_date: дата окончания периода (индексируется)
+  - target_amount: целевая сумма плана
+  - created_at, updated_at: временные метки
 
 ### app/schemas.py
 Pydantic схемы для валидации данных:
@@ -177,9 +200,12 @@ Pydantic схемы для валидации данных:
 - **WebhookDataSchema** - обертка для booking; игнорирует дополнительные поля
 - **WebhookPayloadSchema** - payload webhook (action, status, data); игнорирует дополнительные поля (changes, crm_entity_id и т.д.)
 - **WebhookRequestSchema** - алиас для WebhookPayloadSchema (данные приходят напрямую без обёртки body)
-- **PaymentCreate** - создание поступления (все поля опциональные кроме receipt_date и amount: booking_id, booking_service_id, apartment_title, receipt_date, receipt_time, amount, advance_for_future, operation_type, income_category, comment)
+- **PaymentCreate** - создание поступления (все поля опциональные кроме receipt_date и amount: booking_id, booking_service_id, apartment_title, receipt_date, receipt_time, amount, operation_type, income_category, comment)
 - **PaymentUpdate** - обновление поступления (все поля опциональные)
 - **PaymentResponse** - ответ с поступлением (все поля модели Payment, включая booking_id и booking_service_id, apartment_title может быть None)
+- **MonthlyPlanCreate** - создание плана (start_date, end_date, target_amount)
+- **MonthlyPlanUpdate** - обновление плана (опциональные start_date, end_date, target_amount)
+- **MonthlyPlanResponse** - ответ с планом (id, start_date, end_date, target_amount, created_at, updated_at)
 
 ### app/crud.py
 CRUD операции для работы с базой данных:
@@ -188,6 +214,7 @@ CRUD операции для работы с базой данных:
 - **get_bookings()** - получает список бронирований с фильтрацией по дате:
   - Фильтр по дате выбирает бронирования где указанная дата является датой заселения (begin_date) ИЛИ датой выселения (end_date)
   - Возвращает только не удаленные бронирования
+- **get_bookings_by_begin_date()** - извлекает все не удалённые бронирования по begin_date (конкретный день или диапазон), служит источником данных для расчёта факта заселений
 - **get_booking_by_id()** - получает бронирование по ID
 - **get_unique_apartments()** - получает список уникальных объектов недвижимости (DISTINCT запрос, оптимизирован)
 - **get_grouped_bookings()** - группирует бронирования по apartment_title и дате для отображения:
@@ -225,7 +252,6 @@ CRUD операции для работы с базой данных:
 - **get_payment_by_id()** - получает поступление по ID
 - **update_payment()** - обновляет поступление
 - **delete_payment()** - удаляет поступление
-- **calculate_advance_for_future_bookings()** - рассчитывает сумму авансов на будущие заселения после указанной даты для конкретного объекта
 - **get_bookings_with_services()** - получает бронирования с их услугами для отображения в форме поступлений
   - Оптимизировано с использованием joinedload для избежания N+1 проблемы
   - Загружает бронирования со всеми связанными услугами одним запросом
@@ -236,6 +262,11 @@ CRUD операции для работы с базой данных:
   - Флаг is_from_booking_service=True для идентификации источника данных
   - Используется для автоматического отображения услуг в таблице поступлений
   - Оптимизировано: один JOIN запрос вместо двух отдельных
+- **create_monthly_plan()** - создает новый месячный план
+- **get_all_plans()** - получает список всех планов
+- **get_active_plan_for_period()** - находит активный план для заданного периода (пересечение дат)
+- **update_monthly_plan()** - обновляет план
+- **delete_monthly_plan()** - удаляет план
 
 ### app/auth.py
 Система аутентификации:
@@ -253,30 +284,30 @@ CRUD операции для работы с базой данных:
 
 ### app/routers/web.py
 Роутер для веб-интерфейса:
-- **check_auth()** - проверка авторизации через cookie (внутренняя функция)
+- **check_auth()** - проверка авторизации через cookie, возвращает user_type ('admin' или 'user') или None
 - **GET /** - редирект на /bookings
 - **GET /login** - страница входа
-- **POST /login** - обработка формы входа
+- **POST /login** - обработка формы входа, устанавливает cookie user_type ('admin' или 'user')
 - **GET /logout** - выход из системы
-- **GET /bookings** - страница с таблицей бронирований (требует авторизацию)
+- **GET /bookings** - страница с таблицей бронирований (доступно для admin и user)
   - Проверяет авторизацию и редиректит на /login если не авторизован
   - Параметр filter_date для фильтрации: показывает бронирования где выбранная дата является датой заселения ИЛИ выселения
   - Использует get_grouped_bookings() для группировки данных
   - Отображает выселение и заселение в одной строке для одного адреса
   - Редактируемая колонка "Комментарии по оплате и проживанию в день заселения" с автосохранением
   - Колонка "Доп. услуги" с суммой услуг и модальным окном для управления
-- **POST /update-checkin-comment** - обновление комментария по оплате и проживанию (требует авторизацию)
+- **POST /update-checkin-comment** - обновление комментария по оплате и проживанию (доступно для admin и user)
   - Принимает booking_id и comments через форму
   - Обновляет поле checkin_day_comments в БД
   - Возвращает JSON с результатом операции
-- **GET /services** - получить список всех активных услуг (требует авторизацию)
-- **GET /booking-services/{booking_id}** - получить услуги для бронирования (требует авторизацию)
+- **GET /services** - получить список всех активных услуг (требует авторизацию admin)
+- **GET /booking-services/{booking_id}** - получить услуги для бронирования (требует авторизацию admin)
   - Возвращает список услуг и общую сумму
-- **POST /booking-services** - добавить услугу к бронированию (требует авторизацию)
+- **POST /booking-services** - добавить услугу к бронированию (требует авторизацию admin)
   - Принимает booking_id, service_id, price через форму
   - Возвращает JSON с результатом операции
-- **DELETE /booking-services/{booking_service_id}** - удалить услугу из бронирования (требует авторизацию)
-- **GET /export** - экспорт в Excel (требует авторизацию)
+- **DELETE /booking-services/{booking_service_id}** - удалить услугу из бронирования (требует авторизацию admin)
+- **GET /export** - экспорт в Excel (требует авторизацию admin)
   - Проверяет авторизацию и редиректит на /login если не авторизован
   - Создает Excel файл с помощью openpyxl
   - Использует get_grouped_bookings() для группировки данных
@@ -301,30 +332,29 @@ CRUD операции для работы с базой данных:
 ### app/templates/payments.html
 Страница с таблицей поступлений денег:
 - **Шапка План/Факт**:
-  - План на месяц
-  - Факт реального заселения
-  - Остаток до выполнения плана
-  - Общая сумма аванса на будущие заселения (выделена зеленым фоном)
+  - План на период (из активного плана)
+  - Факт реального заселения (сумма реальных поступлений + услуг от заселений по begin_date в фильтре)
+  - Остаток до выполнения плана (план - факт)
+  - Информация об активном плане (период)
 - **Форма фильтрации по диапазону дат**:
   - Поле "Дата с" (filter_date_from) - начало диапазона
   - Поле "Дата по" (filter_date_to) - конец диапазона
   - Кнопки: Фильтровать, Сбросить
-- Кнопка добавления нового поступления
+- Кнопка добавления: "Добавить поступление"
 - Таблица с колонками:
   - Объект, Дата поступления, Время поступления
-  - Сумма поступления, Сумма аванса на будущее заселение (выделяется зеленым)
+  - Сумма поступления
   - Тип операции, Статья поступления, Комментарий, Действия
   - **Колонка "Статья поступления"**: отображает название услуги из booking_service.service.name если поступление связано с booking_service_id, иначе отображает значение income_category
   - **Два типа строк**:
     1. Реальные поступления (белый фон) - с кнопкой удаления
     2. Услуги из booking_services (серый фон) - помечены "Услуга", нельзя удалить
-- Модальное окно для добавления поступления:
+- Модальное окно для добавления/редактирования поступления:
   - Выбор бронирования из списка (с информацией об объекте, дате и клиенте)
   - Выбор услуги бронирования (загружаются динамически при выборе бронирования)
   - Поле объекта (автозаполняется при выборе бронирования)
   - Поля даты и времени поступления
   - Поле суммы поступления (автозаполняется при выборе услуги)
-  - Поле суммы аванса с кнопкой автоматического расчета
   - Поля типа операции и статьи поступления (с автодополнением, статья автозаполняется при выборе услуги)
   - Поле комментария
 - Кнопка удаления для каждого поступления
@@ -340,7 +370,7 @@ JavaScript для страницы поступлений:
   - Динамическое создание опций в селекте услуг с ценами
   - При выборе услуги автозаполняет сумму и статью поступления
 - **initAddPaymentForm()** - инициализация формы добавления поступления
-  - Очистка пустых строк для опциональных числовых полей (booking_id, booking_service_id, advance_for_future)
+  - Очистка пустых строк для опциональных числовых полей (booking_id, booking_service_id)
   - Отправка формы через AJAX на /payments/create
   - Включает booking_id и booking_service_id в запрос
   - Перезагрузка страницы после успешного создания
@@ -348,10 +378,42 @@ JavaScript для страницы поступлений:
   - Подтверждение удаления
   - Удаление строки из таблицы без перезагрузки
   - AJAX запрос на DELETE /payments/{payment_id}
-- **initCalculateAdvance()** - инициализация кнопки расчета аванса
-  - Проверка заполнения объекта и даты
-  - AJAX запрос на GET /payments/calculate-advance
-  - Автоматическое заполнение поля advance_for_future
+- **formatNumber()** - форматирование чисел с разделителем тысяч
+- **showNotification()** - показ всплывающих уведомлений
+  - Автоматическое скрытие через 5 секунд
+
+### app/templates/plans.html
+Страница управления планами:
+- Таблица всех планов
+- Колонки: Период (start_date - end_date), Целевая сумма, Действия (Edit/Delete)
+- Кнопка "Добавить план" открывает модальное окно
+- Модальное окно добавления/редактирования плана:
+  - Поля: Дата с, Дата по, Целевая сумма
+  - Для редактирования: предзаполнение данными плана
+  - Отправка формы через AJAX
+- Кнопки действий для каждого плана:
+  - "Изменить" - открывает модальное окно редактирования
+  - "Удалить" - удаляет план
+- Форматирование сумм с разделителем тысяч
+- Уведомления об успехе/ошибке операций
+- Подключает JavaScript файл plans.js
+
+### app/static/js/plans.js
+JavaScript для страницы управления планами:
+- **initAddPlanForm()** - инициализация формы добавления/редактирования плана
+  - Обработка submit: POST /plans/create или PUT /plans/{id} в зависимости от режима
+  - Предзаполнение формы для редактирования
+  - Перезагрузка страницы после успеха
+- **initPlanList()** - загрузка списка планов через AJAX GET /plans/list
+  - Заполнение таблицы планов
+  - Переинициализация кнопок edit/delete после загрузки
+- **initEditPlanButtons()** - обработка кнопок редактирования планов
+  - Предзаполнение модалки данными плана
+  - Открытие модалки для редактирования
+- **initDeletePlanButtons()** - обработка кнопок удаления планов
+  - Подтверждение удаления
+  - AJAX DELETE /plans/{id}
+  - Удаление строки из таблицы
 - **formatNumber()** - форматирование чисел с разделителем тысяч
 - **showNotification()** - показ всплывающих уведомлений
   - Автоматическое скрытие через 5 секунд
@@ -361,9 +423,10 @@ JavaScript для страницы поступлений:
 - Bootstrap 5 для стилизации
 - Bootstrap Icons для иконок
 - Навигационная панель с вкладками:
-  - Бронирования
-  - Поступления
-  - Услуги (новая вкладка для управления услугами)
+  - Бронирования (доступно всегда после логина)
+  - Поступления (только для admin, на основе user_type == 'admin')
+  - Услуги (только для admin, на основе user_type == 'admin')
+  - Планы (только для admin, на основе user_type == 'admin')
   - Выход
 - Блоки для расширения (content, extra_css, extra_js)
 
@@ -441,7 +504,7 @@ JavaScript для страницы управления услугами:
   - Открытие модального окна редактирования
   - Обработка формы редактирования через AJAX на PUT /services/{service_id}
   - Перезагрузка страницы после успешного обновления
-- **initToggleStatusButtons()** - инициализация кнопок активации/деактивации
+- **initToggleStatusButtons()** - инициализация кнопок активации/деактивирования
   - Запрос подтверждения действия
   - AJAX запрос на DELETE /services/{service_id}
   - Перезагрузка страницы после изменения статуса
@@ -561,31 +624,30 @@ JavaScript для страницы управления услугами:
 
 #### GET /services
 Получить список всех активных услуг
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"services": [{"id": 1, "name": "Услуга"}]}`
-
 #### GET /booking-services/{booking_id}
 Получить услуги для конкретного бронирования
 - Path параметр: `booking_id`
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"services": [...], "total": 1000.0}`
 
 #### POST /booking-services
 Добавить услугу к бронированию
 - Form data: `booking_id`, `service_id`, `price`
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"status": "success", "message": "...", "id": 1}`
 
 #### DELETE /booking-services/{booking_service_id}
 Удалить услугу из бронирования
 - Path параметр: `booking_service_id`
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"status": "success", "message": "..."}`
 
 #### GET /export
 Экспорт в Excel
 - Query параметр: `filter_date` (YYYY-MM-DD)
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: Excel файл
 
 ### Payments API
@@ -597,16 +659,16 @@ JavaScript для страницы управления услугами:
   - `filter_date_from` (YYYY-MM-DD) - начало диапазона дат
   - `filter_date_to` (YYYY-MM-DD) - конец диапазона дат
 - Можно использовать либо `filter_date`, либо `filter_date_from` и `filter_date_to`
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 
 #### POST /payments/create
 Создать новое поступление
-- Form data (все поля как строки): `booking_id`, `booking_service_id`, `apartment_title`, `receipt_date`, `receipt_time`, `amount`, `advance_for_future`, `operation_type`, `income_category`, `comment`
+- Form data (все поля как строки): `booking_id`, `booking_service_id`, `apartment_title`, `receipt_date`, `receipt_time`, `amount`, `operation_type`, `income_category`, `comment`
 - Обработка данных:
   - Пустые строки автоматически преобразуются в None
-  - Числовые поля (booking_id, booking_service_id, amount, advance_for_future) парсятся на сервере
+  - Числовые поля (booking_id, booking_service_id, amount) парсятся на сервере
   - Если указан `booking_id` и `apartment_title` пустой, то `apartment_title` берется из бронирования автоматически
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"status": "success", "message": "...", "id": 1}`
 
 #### GET /payments/list
@@ -617,50 +679,66 @@ JavaScript для страницы управления услугами:
   - `filter_date_to` (YYYY-MM-DD) - конец диапазона
   - `apartment_title` - фильтр по объекту
 - Можно использовать либо `filter_date`, либо `filter_date_from` и `filter_date_to`
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"payments": [...]}`
-
 #### PUT /payments/{payment_id}
 Обновить поступление
 - Path параметр: `payment_id`
 - Form data: поля для обновления (все опциональные)
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"status": "success", "message": "..."}`
 
 #### DELETE /payments/{payment_id}
 Удалить поступление
 - Path параметр: `payment_id`
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"status": "success", "message": "..."}`
 
-#### GET /payments/calculate-advance
-Рассчитать сумму авансов на будущие заселения
-- Query параметры: `apartment_title`, `selected_date`
-- Требует: авторизация через cookie
-- Response: JSON `{"status": "success", "total_advance": 10000.0}`
+### Plans API
 
-#### GET /health
-Health check endpoint
-```json
-{"status": "ok", "service": "DMD Cottage Sheets"}
-```
+#### GET /plans-management
+Страница управления планами
+- Требует: авторизация через cookie (admin)
+- Response: HTML страница с таблицей планов
+
+#### POST /plans/create
+Создать новый план
+- Form data: `start_date`, `end_date`, `target_amount`
+- Требует: авторизация через cookie (admin)
+- Response: JSON `{"status": "success", "message": "...", "id": 1}`
+
+#### GET /plans/list
+Получить список всех планов
+- Требует: авторизация через cookie (admin)
+- Response: JSON `{"plans": [{"id": 1, "start_date": "...", "end_date": "...", "target_amount": 100000.0, "created_at": "...", "updated_at": "..."}]}`
+#### PUT /plans/{plan_id}
+Обновить план
+- Path параметр: `plan_id`
+- Form data: `start_date` (опционально), `end_date` (опционально), `target_amount` (опционально)
+- Требует: авторизация через cookie (admin)
+- Response: JSON `{"status": "success", "message": "..."}`
+
+#### DELETE /plans/{plan_id}
+Удалить план
+- Path параметр: `plan_id`
+- Требует: авторизация через cookie (admin)
+- Response: JSON `{"status": "success", "message": "..."}`
 
 ### Services API
 
 #### GET /services-management
 Страница управления услугами
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: HTML страница с таблицей услуг
 
 #### GET /services-management/list
 Получить список всех услуг в JSON (активные и неактивные)
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Response: JSON `{"services": [{"id": 1, "name": "Баня", "is_active": true, "created_at": "...", "updated_at": "..."}]}`
-
 #### POST /services/create
 Создать новую услугу
 - Form data: `name` (название услуги)
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Валидация: название не может быть пустым
 - Response: JSON `{"status": "success", "message": "...", "id": 1}`
 
@@ -668,14 +746,14 @@ Health check endpoint
 Обновить услугу
 - Path параметр: `service_id`
 - Form data: `name` (новое название услуги)
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Валидация: название не может быть пустым, услуга должна существовать
 - Response: JSON `{"status": "success", "message": "..."}`
 
 #### DELETE /services/{service_id}
 Переключить статус активности услуги
 - Path параметр: `service_id`
-- Требует: авторизация через cookie
+- Требует: авторизация через cookie (admin)
 - Действие: если услуга активна - деактивирует, если неактивна - активирует
 - Response: JSON `{"status": "success", "message": "...", "is_active": true}`
 
@@ -750,7 +828,7 @@ Health check endpoint
 | receipt_date | Date | Дата поступления (индексируется, NOT NULL) |
 | receipt_time | Time | Время поступления (nullable) |
 | amount | Numeric(10,2) | Сумма поступления (NOT NULL) |
-| advance_for_future | Numeric(10,2) | Сумма аванса на будущее заселение (nullable) |
+| advance_for_future | Numeric(10,2) | Сумма аванса на будущее заселение (nullable, сохраняется для исторических данных) |
 | operation_type | String | Тип операции (наличные, безналичный расчет и т.д., nullable) |
 | income_category | String | Статья поступления (название услуги или другая категория, nullable) |
 | comment | String | Комментарий (nullable) |
@@ -765,9 +843,24 @@ Health check endpoint
 - Учет всех денежных поступлений по объектам недвижимости
 - Связь поступлений с конкретными бронированиями и их услугами
 - Автоматическое заполнение данных при выборе бронирования и услуги
-- Автоматический расчет суммы авансов на будущие заселения
 - Фильтрация по дате поступления и объекту
 - Типизация операций и статей поступления
+
+### Таблица: monthly_plans
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| id | Integer (PK) | Уникальный идентификатор |
+| start_date | Date | Дата начала периода (индексируется) |
+| end_date | Date | Дата окончания периода (индексируется) |
+| target_amount | Numeric(10,2) | Целевая сумма плана (NOT NULL) |
+| created_at | DateTime | Дата создания |
+| updated_at | DateTime | Дата обновления |
+
+**Функциональность:**
+- Хранение месячных планов поступлений
+- Поиск активного плана по пересечению периодов
+- Полный CRUD для управления планами
 
 ## Зависимости
 
@@ -788,7 +881,16 @@ Health check endpoint
 DATABASE_URL=postgresql://user:password@localhost:5432/realty_calendar
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin
+USER_USERNAME=user
+USER_PASSWORD=user
 SECRET_KEY=your-secret-key-change-this-in-production
+
+POSTGRES_USER=user
+POSTGRES_PASSWORD=password
+POSTGRES_DB=realty_calendar 
+POSTGRES_PORT=5432
+POSTGRES_HOST=localhost
+PORT=4001
 ```
 
 ## Логирование
@@ -807,6 +909,7 @@ SECRET_KEY=your-secret-key-change-this-in-production
 - HTTPOnly cookies для защиты от XSS
 - Учетные данные хранятся в .env файле
 - .env файл в .gitignore
+- Два типа пользователей: admin (полный доступ) и user (только бронирования)
 
 ## Использование
 
@@ -834,7 +937,7 @@ uv run raznaradki_main.py
 ### Доступ к веб-интерфейсу
 
 1. Открыть `http://localhost:8000`
-2. Войти с учетными данными из .env (по умолчанию admin/admin)
+2. Войти с учетными данными из .env (admin/admin или user/user)
 3. Просматривать и фильтровать бронирования
 4. Экспортировать в Excel
 
@@ -857,7 +960,6 @@ curl -X POST http://localhost:8000/webhook \
 5. Таблицы создадутся автоматически при старте
 
 ### Docker развертывание
-
 Самый простой способ запуска с PostgreSQL:
 
 ```bash
@@ -892,12 +994,14 @@ docker-compose down
 - **bookings.is_delete** - индексируется для быстрой фильтрации активных бронирований
 - **bookings.begin_date** - индексируется для фильтрации по датам заселения
 - **payments.receipt_date** - индексируется для фильтрации поступлений по датам
+- **monthly_plans.start_date, monthly_plans.end_date** - индексируются для поиска по периодам
 
 ### Оптимизация запросов
 1. **get_unique_apartments()** - использует SELECT DISTINCT вместо загрузки 10000+ записей
 2. **get_bookings_with_services()** - использует joinedload для предзагрузки связанных данных (избегает N+1)
 3. **get_booking_services_as_payments()** - один JOIN запрос вместо двух отдельных запросов
 4. **get_payments()** - использует joinedload для предзагрузки booking_service и service
+5. **get_active_plan_for_period()** - эффективный поиск по пересечению дат с индексами
 
 ### Результат
 - Время обработки запросов к `/payments` с диапазоном дат уменьшилось с ~5 секунд до < 1 секунды
@@ -998,3 +1102,8 @@ docker-compose down
 - Инструкция по откату (с предупреждением об удалении данных)
 - Список связанных изменений в коде
 
+### plan.md
+Детальный план реализации задач:
+- Пошаговый план изменений для добавления функционала планов
+- Диаграмма процесса в Mermaid
+- Обновления по отзывам (список планов с CRUD)

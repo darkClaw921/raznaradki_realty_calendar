@@ -162,3 +162,30 @@ class PaymentResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+# Схемы для месячных планов
+class MonthlyPlanCreate(BaseModel):
+    """Схема для создания месячного плана"""
+    start_date: date
+    end_date: date
+    target_amount: float
+
+
+class MonthlyPlanUpdate(BaseModel):
+    """Схема для обновления месячного плана"""
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    target_amount: Optional[float] = None
+
+
+class MonthlyPlanResponse(BaseModel):
+    """Схема для ответа с месячным планом"""
+    id: int
+    start_date: date
+    end_date: date
+    target_amount: float
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

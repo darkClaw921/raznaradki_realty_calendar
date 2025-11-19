@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -10,17 +10,12 @@ from app.database import get_db
 from app.schemas import PaymentCreate, PaymentUpdate, PaymentResponse
 from app.config import get_settings
 from app import crud
+from app.models import MonthlyPlan
+from app.routers.web import check_auth
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
-
-
-def check_auth(request: Request) -> bool:
-    """Проверка авторизации через session cookie"""
-    session_token = request.cookies.get("session_token")
-    return session_token == settings.secret_key
-
 
 @router.get("/payments", response_class=HTMLResponse)
 async def payments_page(
@@ -28,16 +23,18 @@ async def payments_page(
     filter_date: Optional[str] = None,
     filter_date_from: Optional[str] = None,
     filter_date_to: Optional[str] = None,
+    apartment_title: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
     Страница с таблицей поступлений денег
     """
-    if not check_auth(request):
-        return templates.TemplateResponse("login.html", {
-            "request": request,
-            "error": "Пожалуйста, войдите в систему"
-        })
+    user_type = check_auth(request)
+    if not user_type:
+        return RedirectResponse(url="/login", status_code=302)
+    
+    if user_type != 'admin':
+        return RedirectResponse(url="/bookings", status_code=302)
     
     # Парсинг дат фильтра
     filter_date_obj = None
@@ -62,20 +59,22 @@ async def payments_page(
         except ValueError:
             logger.warning(f"Некорректная дата окончания: {filter_date_to}")
     
-    # Получаем поступления из таблицы payments
+    # Получаем поступления из таблицы payments для таблицы (фильтр по receipt_date)
     payments_list = crud.get_payments(
-        db, 
+        db,
         filter_date=filter_date_obj,
         filter_date_from=filter_date_from_obj,
-        filter_date_to=filter_date_to_obj
+        filter_date_to=filter_date_to_obj,
+        apartment_title=apartment_title
     )
     
-    # Получаем услуги из booking_services как поступления
+    # Получаем услуги из booking_services как поступления (фильтр по begin_date)
     booking_services_as_payments = crud.get_booking_services_as_payments(
         db,
         filter_date=filter_date_obj,
         filter_date_from=filter_date_from_obj,
-        filter_date_to=filter_date_to_obj
+        filter_date_to=filter_date_to_obj,
+        apartment_title=apartment_title
     )
     
     # Объединяем поступления: сначала из payments, потом из booking_services
@@ -91,7 +90,6 @@ async def payments_page(
             'receipt_date': p.receipt_date,
             'receipt_time': p.receipt_time,
             'amount': float(p.amount),
-            'advance_for_future': float(p.advance_for_future) if p.advance_for_future else None,
             'operation_type': p.operation_type,
             'income_category': p.income_category,
             'comment': p.comment,
@@ -111,10 +109,40 @@ async def payments_page(
     # Получаем уникальные объекты для dropdown (оптимизированный запрос)
     unique_apartments = crud.get_unique_apartments(db)
     
-    # Расчет плана и факта (только по реальным поступлениям)
-    total_plan = sum(float(p['advance_for_future']) if p['advance_for_future'] else 0.0 for p in combined_payments if not p['is_from_booking_service'])
-    total_fact = sum(float(p['amount']) for p in combined_payments if not p['is_from_booking_service'])
-    total_advance = total_fact - total_plan
+    # Находим активный план для периода фильтра
+    active_plan = None
+    total_plan = 0.0
+    if filter_date_from_obj and filter_date_to_obj:
+        active_plan = crud.get_active_plan_for_period(db, filter_date_from_obj, filter_date_to_obj)
+        if active_plan:
+            total_plan = float(active_plan.target_amount)
+    elif filter_date_obj:
+        # Для одной даты используем тот же день как период
+        active_plan = crud.get_active_plan_for_period(db, filter_date_obj, filter_date_obj)
+        if active_plan:
+            total_plan = float(active_plan.target_amount)
+    
+    # Расчет факта реального заселения: сумма amount всех бронирований с begin_date в диапазоне фильтра
+    bookings_for_fact: List = []
+    if filter_date_obj:
+        bookings_for_fact = crud.get_bookings_by_begin_date(
+            db,
+            filter_date=filter_date_obj,
+            apartment_title=apartment_title
+        )
+    elif filter_date_from_obj or filter_date_to_obj:
+        bookings_for_fact = crud.get_bookings_by_begin_date(
+            db,
+            filter_date_from=filter_date_from_obj,
+            filter_date_to=filter_date_to_obj,
+            apartment_title=apartment_title
+        )
+    
+    total_fact = sum(float(booking.amount or 0.0) for booking in bookings_for_fact)
+    total_real_payments = sum(float(payment.amount or 0.0) for payment in payments_list)
+    total_service_payments = sum(float(payment.get('amount') or 0.0) for payment in booking_services_as_payments)
+    total_payments_amount = total_real_payments + total_service_payments
+    remainder = total_plan - (total_fact + total_payments_amount)
     
     return templates.TemplateResponse("payments.html", {
         "request": request,
@@ -124,11 +152,14 @@ async def payments_page(
         "filter_date": filter_date,
         "filter_date_from": filter_date_from,
         "filter_date_to": filter_date_to,
+        "apartment_title": apartment_title,
         "total_plan": total_plan,
         "total_fact": total_fact,
-        "total_advance": total_advance
+        "total_payments_amount": total_payments_amount,
+        "remainder": remainder,
+        "active_plan": active_plan,
+        "user_type": user_type
     })
-
 
 @router.post("/payments/create")
 async def create_payment(
@@ -140,7 +171,6 @@ async def create_payment(
     receipt_date: str = Form(...),
     receipt_time: Optional[str] = Form(None),
     amount: str = Form(...),
-    advance_for_future: Optional[str] = Form(None),
     operation_type: Optional[str] = Form(None),
     income_category: Optional[str] = Form(None),
     comment: Optional[str] = Form(None)
@@ -156,15 +186,21 @@ async def create_payment(
     logger.info(f"receipt_date: '{receipt_date}' (type: {type(receipt_date)})")
     logger.info(f"receipt_time: '{receipt_time}' (type: {type(receipt_time)})")
     logger.info(f"amount: {amount} (type: {type(amount)})")
-    logger.info(f"advance_for_future: {advance_for_future} (type: {type(advance_for_future)})")
     logger.info(f"operation_type: '{operation_type}' (type: {type(operation_type)})")
     logger.info(f"income_category: '{income_category}' (type: {type(income_category)})")
     logger.info(f"comment: '{comment}' (type: {type(comment)})")
     
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         return JSONResponse(
             status_code=401,
             content={"status": "error", "message": "Не авторизован"}
+        )
+    
+    if user_type != 'admin':
+        return JSONResponse(
+            status_code=403,
+            content={"status": "error", "message": "Доступ запрещен"}
         )
     
     try:
@@ -184,13 +220,6 @@ async def create_payment(
                 logger.warning(f"Некорректный booking_service_id: '{booking_service_id}'")
         
         amount_float = float(amount)
-        
-        advance_for_future_float = None
-        if advance_for_future and advance_for_future.strip():
-            try:
-                advance_for_future_float = float(advance_for_future)
-            except ValueError:
-                logger.warning(f"Некорректный advance_for_future: '{advance_for_future}'")
         
         # Если указано бронирование, получаем apartment_title из него
         if booking_id_int and not apartment_title:
@@ -229,7 +258,6 @@ async def create_payment(
         logger.info(f"  - receipt_date: {receipt_date_obj}")
         logger.info(f"  - receipt_time: {receipt_time_obj}")
         logger.info(f"  - amount: {amount_float}")
-        logger.info(f"  - advance_for_future: {advance_for_future_float}")
         
         payment_data = PaymentCreate(
             booking_id=booking_id_int,
@@ -238,7 +266,6 @@ async def create_payment(
             receipt_date=receipt_date_obj,
             receipt_time=receipt_time_obj,
             amount=amount_float,
-            advance_for_future=advance_for_future_float,
             operation_type=operation_type if operation_type and operation_type.strip() else None,
             income_category=income_category if income_category and income_category.strip() else None,
             comment=comment if comment and comment.strip() else None
@@ -269,7 +296,6 @@ async def create_payment(
             content={"status": "error", "message": str(e)}
         )
 
-
 @router.get("/payments/list")
 async def list_payments(
     request: Request,
@@ -283,10 +309,17 @@ async def list_payments(
     Получить список поступлений в JSON формате
     Поддерживает фильтрацию по одной дате или по диапазону
     """
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         return JSONResponse(
             status_code=401,
             content={"status": "error", "message": "Не авторизован"}
+        )
+    
+    if user_type != 'admin':
+        return JSONResponse(
+            status_code=403,
+            content={"status": "error", "message": "Доступ запрещен"}
         )
     
     # Парсинг дат фильтра
@@ -328,14 +361,12 @@ async def list_payments(
             "receipt_date": payment.receipt_date.isoformat(),
             "receipt_time": payment.receipt_time.isoformat() if payment.receipt_time else None,
             "amount": float(payment.amount),
-            "advance_for_future": float(payment.advance_for_future) if payment.advance_for_future else None,
             "operation_type": payment.operation_type,
             "income_category": payment.income_category,
             "comment": payment.comment
         })
     
     return JSONResponse(content={"payments": result})
-
 
 @router.put("/payments/{payment_id}")
 async def update_payment_endpoint(
@@ -345,7 +376,6 @@ async def update_payment_endpoint(
     receipt_date: Optional[str] = Form(None),
     receipt_time: Optional[str] = Form(None),
     amount: Optional[float] = Form(None),
-    advance_for_future: Optional[float] = Form(None),
     operation_type: Optional[str] = Form(None),
     income_category: Optional[str] = Form(None),
     comment: Optional[str] = Form(None),
@@ -354,10 +384,17 @@ async def update_payment_endpoint(
     """
     Обновить поступление
     """
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         return JSONResponse(
             status_code=401,
             content={"status": "error", "message": "Не авторизован"}
+        )
+    
+    if user_type != 'admin':
+        return JSONResponse(
+            status_code=403,
+            content={"status": "error", "message": "Доступ запрещен"}
         )
     
     try:
@@ -379,9 +416,6 @@ async def update_payment_endpoint(
         
         if amount is not None:
             update_data["amount"] = amount
-        
-        if advance_for_future is not None:
-            update_data["advance_for_future"] = advance_for_future
         
         if operation_type is not None:
             update_data["operation_type"] = operation_type
@@ -413,7 +447,6 @@ async def update_payment_endpoint(
             content={"status": "error", "message": str(e)}
         )
 
-
 @router.delete("/payments/{payment_id}")
 async def delete_payment_endpoint(
     request: Request,
@@ -423,10 +456,17 @@ async def delete_payment_endpoint(
     """
     Удалить поступление
     """
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         return JSONResponse(
             status_code=401,
             content={"status": "error", "message": "Не авторизован"}
+        )
+    
+    if user_type != 'admin':
+        return JSONResponse(
+            status_code=403,
+            content={"status": "error", "message": "Доступ запрещен"}
         )
     
     success = crud.delete_payment(db, payment_id)
@@ -441,39 +481,3 @@ async def delete_payment_endpoint(
         "status": "success",
         "message": "Поступление удалено"
     })
-
-
-@router.get("/payments/calculate-advance")
-async def calculate_advance(
-    request: Request,
-    apartment_title: str,
-    selected_date: str,
-    db: Session = Depends(get_db)
-):
-    """
-    Рассчитать сумму авансов на будущие заселения
-    """
-    if not check_auth(request):
-        return JSONResponse(
-            status_code=401,
-            content={"status": "error", "message": "Не авторизован"}
-        )
-    
-    try:
-        selected_date_obj = date.fromisoformat(selected_date)
-        total_advance = crud.calculate_advance_for_future_bookings(
-            db, apartment_title, selected_date_obj
-        )
-        
-        return JSONResponse(content={
-            "status": "success",
-            "total_advance": total_advance
-        })
-    
-    except Exception as e:
-        logger.error(f"Ошибка при расчете аванса: {e}")
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(e)}
-        )
-

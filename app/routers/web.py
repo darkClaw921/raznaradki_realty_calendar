@@ -21,10 +21,17 @@ templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
 
 
-def check_auth(request: Request) -> bool:
-    """Проверка авторизации через session cookie"""
+def check_auth(request: Request) -> Optional[str]:
+    """Проверка авторизации через session cookie и возврат user_type"""
     session_token = request.cookies.get("session_token")
-    return session_token == settings.secret_key
+    if not session_token or session_token != settings.secret_key:
+        return None
+    
+    user_type = request.cookies.get("user_type")
+    if not user_type or user_type not in ['admin', 'user']:
+        return None
+    
+    return user_type
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -47,10 +54,23 @@ async def login(
     password: str = Form(...)
 ):
     """Обработка формы входа"""
+    user_type = None
     if username == settings.admin_username and password == settings.admin_password:
+        user_type = 'admin'
+    elif username == settings.user_username and password == settings.user_password:
+        user_type = 'user'
+    
+    if user_type:
         response = RedirectResponse(url="/bookings", status_code=302)
         create_session_cookie(response)
-        logger.info(f"Успешный вход пользователя: {username}")
+        response.set_cookie(
+            key="user_type",
+            value=user_type,
+            httponly=True,
+            max_age=86400,  # 24 часа
+            samesite="lax"
+        )
+        logger.info(f"Успешный вход пользователя: {username} ({user_type})")
         return response
     else:
         logger.warning(f"Неудачная попытка входа: {username}")
@@ -66,6 +86,7 @@ async def logout():
     """Выход из системы"""
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("session_token")
+    response.delete_cookie("user_type")
     logger.info("Пользователь вышел из системы")
     return response
 
@@ -82,7 +103,8 @@ async def bookings_page(
     - filter_date: фильтр по дате в формате YYYY-MM-DD (показывает бронирования где дата является датой заселения ИЛИ выселения)
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         return RedirectResponse(url="/login", status_code=302)
     
     # Преобразуем строку даты в объект date
@@ -103,7 +125,8 @@ async def bookings_page(
         {
             "request": request,
             "grouped_bookings": grouped_bookings,
-            "filter_date": filter_date
+            "filter_date": filter_date,
+            "user_type": user_type
         }
     )
 
@@ -119,7 +142,8 @@ async def update_checkin_comment(
     Обновить комментарии по оплате и проживанию в день заселения
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     # Обновляем комментарий
@@ -142,7 +166,8 @@ async def get_services_list(
     Получить список всех активных услуг
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     services = get_all_services(db, active_only=True)
@@ -159,7 +184,8 @@ async def get_booking_services_list(
     Получить список услуг для конкретного бронирования
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     services = get_booking_services(db, booking_id)
@@ -183,7 +209,8 @@ async def add_service_to_booking(
     Добавить услугу к бронированию
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
@@ -208,7 +235,8 @@ async def remove_service_from_booking(
     Удалить услугу из бронирования
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     success = delete_booking_service(db, booking_service_id)
@@ -229,7 +257,8 @@ async def export_to_excel(
     Экспорт таблицы бронирований в Excel
     """
     # Проверка авторизации
-    if not check_auth(request):
+    user_type = check_auth(request)
+    if not user_type:
         return RedirectResponse(url="/login", status_code=302)
     
     # Преобразуем строку даты в объект date
@@ -496,4 +525,3 @@ async def export_to_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-
