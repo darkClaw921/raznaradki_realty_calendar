@@ -139,6 +139,36 @@ async def payments_page(
         )
     
     total_fact = sum(float(booking.amount or 0.0) for booking in bookings_for_fact)
+    
+    # Группировка по объектам с учётом дублей
+    grouped_fact_bookings = []
+    total_fact_prepayment = 0.0
+    total_fact_payment = 0.0
+    if bookings_for_fact:
+        groups = {}
+        for booking in bookings_for_fact:
+            title = (booking.apartment_title or '').strip()
+            if not title:
+                title = 'Без названия'
+            normalized = title.replace(' ДУБЛЬ', '').replace(' Дубль', '').strip()
+            groups.setdefault(normalized, {
+                "title": normalized,
+                "items": [],
+                "total_amount": 0.0,
+                "total_prepayment": 0.0,
+                "total_payment": 0.0
+            })
+            groups[normalized]["items"].append(booking)
+            groups[normalized]["total_amount"] += float(booking.amount or 0.0)
+            groups[normalized]["total_prepayment"] += float(booking.prepayment or 0.0)
+            groups[normalized]["total_payment"] += float(booking.payment or 0.0)
+        
+        grouped_fact_bookings = list(groups.values())
+        grouped_fact_bookings.sort(key=lambda g: g["title"])
+        for group in grouped_fact_bookings:
+            group["items"].sort(key=lambda b: (b.apartment_title or '').upper())
+            total_fact_prepayment += group["total_prepayment"]
+            total_fact_payment += group["total_payment"]
     total_real_payments = sum(float(payment.amount or 0.0) for payment in payments_list)
     total_service_payments = sum(float(payment.get('amount') or 0.0) for payment in booking_services_as_payments)
     total_payments_amount = total_real_payments + total_service_payments
@@ -147,6 +177,7 @@ async def payments_page(
     return templates.TemplateResponse("payments.html", {
         "request": request,
         "payments": combined_payments,
+        "bookings_for_fact": grouped_fact_bookings,
         "bookings_with_services": bookings_with_services,
         "unique_apartments": unique_apartments,
         "filter_date": filter_date,
@@ -155,6 +186,8 @@ async def payments_page(
         "apartment_title": apartment_title,
         "total_plan": total_plan,
         "total_fact": total_fact,
+        "total_fact_prepayment": total_fact_prepayment,
+        "total_fact_payment": total_fact_payment,
         "total_payments_amount": total_payments_amount,
         "remainder": remainder,
         "active_plan": active_plan,
