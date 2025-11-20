@@ -4,6 +4,7 @@ from app.models import Booking, Service, BookingService, Payment, MonthlyPlan, E
 from app.schemas import BookingSchema, PaymentCreate, PaymentUpdate, MonthlyPlanCreate, MonthlyPlanUpdate, ExpenseCreate, ExpenseUpdate
 from datetime import date, datetime
 from typing import Optional, List
+import re
 from loguru import logger
 
 
@@ -144,11 +145,13 @@ def get_bookings_by_begin_date(
     if apartment_title:
         base_title = apartment_title.strip()
         if base_title:
-            base_upper = base_title.upper()
+            # Удаляем ведущие числа для поиска
+            base_title_clean = re.sub(r'^\d+(?:\.\d+)?\)\s*', '', base_title)
+            base_upper = base_title_clean.upper()
             duplicate_pattern = f"{base_upper} %ДУБ%"
             query = query.filter(
                 or_(
-                    func.upper(Booking.apartment_title) == base_upper,
+                    func.upper(Booking.apartment_title).like(f"%{base_upper}"),
                     func.upper(Booking.apartment_title).like(duplicate_pattern)
                 )
             )
@@ -179,11 +182,16 @@ def get_grouped_bookings(
     
     # Вспомогательная функция для определения базового адреса
     def get_base_address(address: str) -> str:
-        """Получить базовый адрес без суффикса ДУБЛЬ (регистронезависимо)"""
+        """Получить базовый адрес без суффикса ДУБЛЬ (регистронезависимо) и без ведущих чисел"""
         if not address:
             return ''
         
         address_clean = address.strip()
+        
+        # Удаляем ведущие числа в формате '123) ' или '123.4) '
+        # Например: "004) 29Б" -> "29Б" или "011.2) Ш15" -> "Ш15"
+        address_clean = re.sub(r'^\d+(?:\.\d+)?\)\s*', '', address_clean)
+        
         address_upper = address_clean.upper()
         
         # Список суффиксов для удаления (в верхнем регистре)

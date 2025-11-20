@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from datetime import date, datetime
 from typing import Optional, Dict, Any
+import re
 from functools import lru_cache
 import time
 from app.database import get_db
@@ -27,15 +28,42 @@ def check_auth(request: Request) -> Optional[str]:
     if not user_type or user_type not in ['admin', 'user']:
         return None
     
+    # Проверка срока действия для администраторов
+    if user_type == 'admin' and settings.admin_expiration_date:
+        # Получаем дату создания сессии из cookie (если есть)
+        session_created_str = request.cookies.get("session_created")
+        if session_created_str:
+            try:
+                session_created = datetime.fromisoformat(session_created_str)
+                # Если сессия была создана ДО даты истечения, то она недействительна
+                if session_created.date() < settings.admin_expiration_date.date():
+                    return None  # Требуем перелогиниться
+                else:
+                    # Если сессия была создана ПОСЛЕ даты истечения или в этот же день, то она действительна
+                    return user_type
+            except ValueError:
+                pass
+        
+        # Если дата создания сессии не указана или не может быть распознана,
+        # проверяем текущую дату (для обратной совместимости)
+        if datetime.now().date() >= settings.admin_expiration_date.date():
+            # Удаляем cookie и возвращаем None для принудительного перелогинивания
+            return None
+    
     return user_type
 
 
 def get_base_address(address: str) -> str:
-    """Получить базовый адрес без суффикса ДУБЛЬ (регистронезависимо)"""
+    """Получить базовый адрес без суффикса ДУБЛЬ (регистронезависимо) и без ведущих чисел"""
     if not address:
         return ''
     
     address_clean = address.strip()
+    
+    # Удаляем ведущие числа в формате '123) ' или '123.4) '
+    # Например: "004) 29Б" -> "29Б" или "011.2) Ш15" -> "Ш15"
+    address_clean = re.sub(r'^\d+(?:\.\d+)?\)\s*', '', address_clean)
+    
     address_upper = address_clean.upper()
     
     # Список суффиксов для удаления (в верхнем регистре)

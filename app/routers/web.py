@@ -31,6 +31,28 @@ def check_auth(request: Request) -> Optional[str]:
     if not user_type or user_type not in ['admin', 'user']:
         return None
     
+    # Проверка срока действия для администраторов
+    if user_type == 'admin' and settings.admin_expiration_date:
+        # Получаем дату создания сессии из cookie (если есть)
+        session_created_str = request.cookies.get("session_created")
+        if session_created_str:
+            try:
+                session_created = datetime.fromisoformat(session_created_str)
+                # Если сессия была создана ДО даты истечения, то она недействительна
+                if session_created.date() < settings.admin_expiration_date.date():
+                    return None  # Требуем перелогиниться
+                else:
+                    # Если сессия была создана ПОСЛЕ даты истечения или в этот же день, то она действительна
+                    return user_type
+            except ValueError:
+                pass
+        
+        # Если дата создания сессии не указана или не может быть распознана,
+        # проверяем текущую дату (для обратной совместимости)
+        if datetime.now().date() >= settings.admin_expiration_date.date():
+            # Удаляем cookie и возвращаем None для принудительного перелогинивания
+            return None
+    
     return user_type
 
 
@@ -70,6 +92,14 @@ async def login(
             max_age=86400,  # 24 часа
             samesite="lax"
         )
+        # Устанавливаем дату создания сессии для проверки срока действия администраторов
+        response.set_cookie(
+            key="session_created",
+            value=datetime.now().isoformat(),
+            httponly=True,
+            max_age=86400,  # 24 часа
+            samesite="lax"
+        )
         logger.info(f"Успешный вход пользователя: {username} ({user_type})")
         return response
     else:
@@ -87,6 +117,7 @@ async def logout():
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("session_token")
     response.delete_cookie("user_type")
+    response.delete_cookie("session_created")
     logger.info("Пользователь вышел из системы")
     return response
 

@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from typing import Optional, List
+import re
 from datetime import date, time
 from datetime import datetime
 import pytz
@@ -167,7 +168,12 @@ async def payments_page(
             title = (booking.apartment_title or '').strip()
             if not title:
                 title = 'Без названия'
-            normalized = title.replace(' ДУБЛЬ', '').replace(' Дубль', '').strip()
+            
+            # Удаляем ведущие числа в формате '123) ' или '123.4) ' и суффиксы ДУБЛЬ
+            normalized = re.sub(r'^\d+(?:\.\d+)?\)\s*', '', title)
+            # Удаляем суффиксы ДУБЛЬ
+            normalized = normalized.replace(' ДУБЛЬ', '').replace(' Дубль', '').strip()
+            
             groups.setdefault(normalized, {
                 "title": normalized,
                 "items": [],

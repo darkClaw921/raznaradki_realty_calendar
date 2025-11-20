@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import Optional
-
+from datetime import datetime
 
 class Settings(BaseSettings):
     """Настройки приложения из .env файла"""
@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     user_username: str = "user"
     user_password: str = "user"
     secret_key: str
+    
+    # Дата истечения срока действия авторизации для администраторов
+    admin_expiration_date: Optional[datetime] = None
     
     # Опциональные переменные для PostgreSQL (для docker-compose)
     postgres_user: Optional[str] = None
