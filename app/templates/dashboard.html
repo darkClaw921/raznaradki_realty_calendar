@@ -49,11 +49,8 @@
                     <tbody>
                         {% for base_apartment, apartment_data in get_apartment_summary(financial_data).items() %}
                         <tr>
-                            <td>
+                            <td class="apartment-cell" {% if apartment_data.apartments|length > 1 %}title="{{ apartment_data.apartments|join(', ') }}"{% endif %}>
                                 <strong>{{ base_apartment }}</strong>
-                                {% if apartment_data.apartments|length > 1 %}
-                                <br><small class="text-muted">({{ apartment_data.apartments|join(', ') }})</small>
-                                {% endif %}
                             </td>
                             <td class="text-success fw-light small">{{ "{:,.0f}".format(apartment_data.total_income)|replace(',', ' ') }}</td>
                             <td class="text-danger fw-light small">{{ "{:,.0f}".format(apartment_data.total_expenses)|replace(',', ' ') }}</td>
@@ -180,6 +177,16 @@
     .table-responsive {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Apartment hover styles */
+    .apartment-cell {
+        position: relative;
+        cursor: pointer;
+    }
+    
+    .apartment-cell:hover {
+        background-color: #f8f9fa;
     }
 </style>
 {% endblock %}
