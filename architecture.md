@@ -23,20 +23,23 @@ raznaradki_realty_calendar/
 │   │   ├── web.py               # Web UI endpoints
 │   │   ├── payments.py          # Endpoints для поступлений денег
 │   │   ├── services.py          # Endpoints для управления услугами
-│   │   └── plans.py             # Endpoints для управления планами
+│   │   ├── plans.py             # Endpoints для управления планами
+│   │   └── expenses.py          # Endpoints для управления расходами
 │   ├── static/
 │   │   └── js/
 │   │       ├── bookings.js      # JavaScript для страницы бронирований
 │   │       ├── payments.js      # JavaScript для страницы поступлений
 │   │       ├── services.js      # JavaScript для страницы управления услугами
-│   │       └── plans.js         # JavaScript для страницы управления планами
+│   │       ├── plans.js         # JavaScript для страницы управления планами
+│   │       └── expenses.js       # JavaScript для страницы расходов
 │   └── templates/
 │       ├── base.html            # Базовый шаблон с Bootstrap
 │       ├── login.html           # Страница входа
 │       ├── bookings.html        # Таблица бронирований
 │       ├── payments.html        # Таблица поступлений денег
 │       ├── services_management.html  # Страница управления услугами
-│       └── plans.html           # Страница управления планами
+│       ├── plans.html           # Страница управления планами
+│       └── expenses.html        # Таблица расходов
 ├── logs/                        # Директория для логов
 ├── cells.json                   # Экспорт таблицы cells из старой БД (для миграции)
 ├── sheets.json                  # Экспорт таблицы sheets из старой БД (для миграции)
@@ -187,6 +190,14 @@ SQLAlchemy модели базы данных:
   - end_date: дата окончания периода (индексируется)
   - target_amount: целевая сумма плана
   - created_at, updated_at: временные метки
+- **Expense** - модель расходов:
+  - id: уникальный идентификатор
+  - apartment_title: название объекта недвижимости (опционально)
+  - expense_date: дата расхода (индексируется)
+  - amount: сумма расхода
+  - category: категория расхода (опционально)
+  - comment: комментарий (опционально)
+  - created_at, updated_at: временные метки
 
 ### app/schemas.py
 Pydantic схемы для валидации данных:
@@ -206,6 +217,9 @@ Pydantic схемы для валидации данных:
 - **MonthlyPlanCreate** - создание плана (start_date, end_date, target_amount)
 - **MonthlyPlanUpdate** - обновление плана (опциональные start_date, end_date, target_amount)
 - **MonthlyPlanResponse** - ответ с планом (id, start_date, end_date, target_amount, created_at, updated_at)
+- **ExpenseCreate** - создание расхода (apartment_title, expense_date, amount, category, comment)
+- **ExpenseUpdate** - обновление расхода (опциональные apartment_title, expense_date, amount, category, comment)
+- **ExpenseResponse** - ответ с расходом (id, apartment_title, expense_date, amount, category, comment, created_at, updated_at)
 
 ### app/crud.py
 CRUD операции для работы с базой данных:
@@ -267,6 +281,12 @@ CRUD операции для работы с базой данных:
 - **get_active_plan_for_period()** - находит активный план для заданного периода (пересечение дат)
 - **update_monthly_plan()** - обновляет план
 - **delete_monthly_plan()** - удаляет план
+- **create_expense()** - создает новый расход
+- **get_expenses()** - получает список расходов с фильтрацией по дате/диапазону дат и объекту
+  - Поддерживает фильтрацию по одной дате (filter_date) или по диапазону (filter_date_from, filter_date_to)
+- **get_expense_by_id()** - получает расход по ID
+- **update_expense()** - обновляет расход
+- **delete_expense()** - удаляет расход
 
 ### app/auth.py
 Система аутентификации:
@@ -757,6 +777,44 @@ JavaScript для страницы управления услугами:
 - Действие: если услуга активна - деактивирует, если неактивна - активирует
 - Response: JSON `{"status": "success", "message": "...", "is_active": true}`
 
+### Expenses API
+
+#### GET /expenses
+Страница расходов
+- Query параметры: 
+  - `filter_date_from` (YYYY-MM-DD) - начало диапазона дат
+  - `filter_date_to` (YYYY-MM-DD) - конец диапазона дат
+  - `apartment_title` - фильтр по объекту
+- Требует: авторизация через cookie (admin и user)
+
+#### POST /expenses/create
+Создать новый расход
+- Form data (все поля как строки): `apartment_title`, `expense_date`, `amount`, `category`, `comment`
+- Требует: авторизация через cookie (admin и user)
+- Response: JSON `{"status": "success", "message": "...", "id": 1}`
+
+#### GET /expenses/list
+Получить список расходов в JSON
+- Query параметры: 
+  - `filter_date_from` (YYYY-MM-DD) - начало диапазона
+  - `filter_date_to` (YYYY-MM-DD) - конец диапазона
+  - `apartment_title` - фильтр по объекту
+- Требует: авторизация через cookie (admin и user)
+- Response: JSON `{"expenses": [...]}`
+
+#### PUT /expenses/{expense_id}
+Обновить расход
+- Path параметр: `expense_id`
+- Form data: поля для обновления (все опциональные)
+- Требует: авторизация через cookie (admin и user)
+- Response: JSON `{"status": "success", "message": "..."}`
+
+#### DELETE /expenses/{expense_id}
+Удалить расход
+- Path параметр: `expense_id`
+- Требует: авторизация через cookie (admin и user)
+- Response: JSON `{"status": "success", "message": "..."}`
+
 ## База данных
 
 ### Таблица: bookings
@@ -861,6 +919,25 @@ JavaScript для страницы управления услугами:
 - Хранение месячных планов поступлений
 - Поиск активного плана по пересечению периодов
 - Полный CRUD для управления планами
+
+### Таблица: expenses
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| id | Integer (PK) | Уникальный идентификатор |
+| apartment_title | String | Название объекта недвижимости (опционально) |
+| expense_date | Date | Дата расхода (индексируется, NOT NULL) |
+| amount | Numeric(10,2) | Сумма расхода (NOT NULL) |
+| category | String | Категория расхода (опционально) |
+| comment | String | Комментарий (опционально) |
+| created_at | DateTime | Дата создания записи |
+| updated_at | DateTime | Дата обновления записи |
+
+**Функциональность:**
+- Учет всех расходов по объектам недвижимости или общих расходов
+- Фильтрация по дате расхода и объекту
+- Категоризация расходов
+- Возможность добавления комментариев
 
 ## Зависимости
 
@@ -1047,6 +1124,59 @@ docker-compose down
 - **Базовые услуги (обновленный список)**: Баня, Веники, Доп часы, Доп гости, Игровая комната, Спа зона, Штраф, Продление доп день, Другие платежи
 - Использует loguru для логирования
 - Запуск: `uv run python init_services.py`
+
+### app/routers/expenses.py
+Роутер для управления расходами:
+- **GET /expenses** - страница с таблицей расходов (доступно для admin и user)
+  - Параметры: filter_date_from и filter_date_to (диапазон дат), apartment_title (фильтр по объекту)
+  - Отображает таблицу расходов с фильтрами по дате и объекту
+  - Показывает общую сумму расходов
+- **POST /expenses/create** - создать новый расход (доступно для admin и user)
+  - Принимает данные формы: apartment_title, expense_date, amount, category, comment
+  - Возвращает JSON с результатом операции
+- **GET /expenses/list** - получить список расходов в JSON (доступно для admin и user)
+  - Параметры filter_date_from, filter_date_to, apartment_title для фильтрации
+- **PUT /expenses/{expense_id}** - обновить расход (доступно для admin и user)
+- **DELETE /expenses/{expense_id}** - удалить расход (доступно для admin и user)
+
+### app/templates/expenses.html
+Страница с таблицей расходов:
+- **Шапка с общей суммой расходов**
+- **Форма фильтрации по диапазону дат**:
+  - Поле "Дата с" (filter_date_from) - начало диапазона
+  - Поле "Дата по" (filter_date_to) - конец диапазона
+  - Поле "Объект" (apartment_title) - фильтр по объекту недвижимости
+  - Кнопки: Фильтровать, Сбросить
+- Кнопка добавления: "Добавить расход"
+- Таблица с колонками:
+  - Объект, Дата расхода, Сумма расхода, Категория, Комментарий, Действия
+- Модальное окно для добавления/редактирования расхода:
+  - Поле объекта (с автодополнением)
+  - Поля даты и суммы расхода
+  - Поле категории (с автодополнением)
+  - Поле комментария
+- Кнопки редактирования и удаления для каждого расхода
+- Форматирование сумм с разделителем тысяч
+- Уведомления об успехе/ошибке операций
+- Подключает JavaScript файл expenses.js
+
+### app/static/js/expenses.js
+JavaScript для страницы расходов:
+- **initAddExpenseForm()** - инициализация формы добавления расхода
+  - Отправка формы через AJAX на /expenses/create
+  - Перезагрузка страницы после успешного создания
+- **initEditExpenseButtons()** - инициализация кнопок редактирования
+  - Загрузка данных расхода через AJAX
+  - Предзаполнение формы редактирования
+  - Отправка формы через AJAX на PUT /expenses/{id}
+  - Перезагрузка страницы после успешного обновления
+- **initDeleteButtons()** - инициализация кнопок удаления
+  - Подтверждение удаления
+  - Удаление строки из таблицы без перезагрузки
+  - AJAX запрос на DELETE /expenses/{expense_id}
+- **formatNumber()** - форматирование чисел с разделителем тысяч
+- **showNotification()** - показ всплывающих уведомлений
+  - Автоматическое скрытие через 5 секунд
 
 ### migrate_old_data.py
 Скрипт миграции данных из старой базы данных:

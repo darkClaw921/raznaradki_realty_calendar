@@ -138,3 +138,20 @@ class MonthlyPlan(Base):
     
     def __repr__(self):
         return f"<MonthlyPlan(id={self.id}, start_date={self.start_date}, end_date={self.end_date}, target_amount={self.target_amount})>"
+
+
+class Expense(Base):
+    """Модель расходов"""
+    __tablename__ = "expenses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    apartment_title = Column(String, nullable=True)  # Объект (опционально)
+    expense_date = Column(Date, nullable=False, index=True)  # Дата расхода
+    amount = Column(Numeric(10, 2), nullable=False)  # Сумма расхода
+    category = Column(String, nullable=True)  # Категория расхода
+    comment = Column(String, nullable=True)  # Комментарий
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<Expense(id={self.id}, apartment_title={self.apartment_title}, expense_date={self.expense_date}, amount={self.amount})>"

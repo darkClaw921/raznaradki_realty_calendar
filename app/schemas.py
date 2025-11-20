@@ -189,3 +189,37 @@ class MonthlyPlanResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# Схемы для расходов
+class ExpenseCreate(BaseModel):
+    """Схема для создания расхода"""
+    apartment_title: Optional[str] = None
+    expense_date: date
+    amount: float
+    category: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class ExpenseUpdate(BaseModel):
+    """Схема для обновления расхода"""
+    apartment_title: Optional[str] = None
+    expense_date: Optional[date] = None
+    amount: Optional[float] = None
+    category: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class ExpenseResponse(BaseModel):
+    """Схема для ответа с расходом"""
+    id: int
+    apartment_title: Optional[str] = None
+    expense_date: date
+    amount: float
+    category: Optional[str] = None
+    comment: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

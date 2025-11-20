@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Расходы - DMD Cottage{% endblock %}
+
+{% block extra_css %}
+<style>
+    .expenses-table {
+        width: auto;
+        table-layout: auto;
+    }
+    .expenses-table th,
+    .expenses-table td {
+        padding: 8px;
+        font-size: 14px;
+        white-space: nowrap;
+        border: 1px solid #dee2e6;
+    }
+    .expenses-table th {
+        background-color: rgb(245, 245, 245);
+        text-align: center;
+        vertical-align: middle;
+        font-weight: bold;
+        position: relative;
+    }
+    .btn-add-expense {
+        margin-bottom: 15px;
+    }
+    .form-control-sm {
+        font-size: 0.875rem;
+    }
+    .actions-column {
+        text-align: center;
+    }
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    .total-expenses-header {
+        background-color: #f5f5f5;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        border: 2px solid #dee2e6;
+    }
+    .total-expenses-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .total-expenses-label {
+        font-weight: bold;
+        font-size: 16px;
+    }
+    .total-expenses-value {
+        font-size: 18px;
+        font-weight: bold;
+        color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Шапка с общей суммой расходов -->
+    <div class="total-expenses-header">
+        <div class="total-expenses-row">
+            <span class="total-expenses-label">Общая сумма расходов</span>
+            <span class="total-expenses-value">{{ '{:,.0f}'.format(total_expenses).replace(',', ' ') if total_expenses > 0 else '0' }}</span>
+        </div>
+    </div>
+
+    <!-- Фильтр -->
+    <div class="filter-section">
+        <h4 class="mb-3"><i class="bi bi-funnel"></i> Фильтр расходов</h4>
+        <form method="get" action="/expenses" class="row g-3">
+            <div class="col-md-3">
+                <label for="filter_date_from" class="form-label">Дата с:</label>
+                <input type="date" class="form-control" id="filter_date_from" name="filter_date_from" 
+                       value="{{ filter_date_from or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="filter_date_to" class="form-label">Дата по:</label>
+                <input type="date" class="form-control" id="filter_date_to" name="filter_date_to" 
+                       value="{{ filter_date_to or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="filter_apartment_title" class="form-label">Объект</label>
+                <input type="text" class="form-control" id="filter_apartment_title" name="apartment_title"
+                       list="filterApartmentsList" value="{{ apartment_title or '' }}">
+                <datalist id="filterApartmentsList">
+                    {% for apt in unique_apartments %}
+                    <option value="{{ apt }}">
+                    {% endfor %}
+                </datalist>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-funnel-fill"></i> Фильтровать
+                </button>
+                <a href="/expenses" class="btn btn-secondary">
+                    <i class="bi bi-x-circle"></i> Сбросить
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Кнопки добавления -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4><i class="bi bi-currency-exchange"></i> Расходы</h4>
+        <div>
+            <button type="button" class="btn btn-success btn-add-expense" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
+                <i class="bi bi-plus-circle"></i> Добавить расход
+            </button>
+        </div>
+    </div>
+
+    <!-- Таблица расходов -->
+    <div class="table-responsive">
+        <table class="table table-hover table-bordered expenses-table">
+            <thead>
+                <tr>
+                    <th>Объект</th>
+                    <th>Дата расхода</th>
+                    <th>Сумма расхода</th>
+                    <th>Категория</th>
+                    <th>Комментарий</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="expensesTableBody">
+                {% if expenses %}
+                    {% for expense in expenses %}
+                    <tr data-expense-id="{{ expense.id }}">
+                        <td><strong>{{ expense.apartment_title or 'Общий расход' }}</strong></td>
+                        <td>{{ expense.expense_date.strftime('%d.%m.%Y') if expense.expense_date else '-' }}</td>
+                        <td style="text-align: right;">{{ '{:,.0f}'.format(expense.amount).replace(',', ' ') if expense.amount else '-' }}</td>
+                        <td>{{ expense.category or '-' }}</td>
+                        <td>{{ expense.comment or '-' }}</td>
+                        <td class="actions-column">
+                            <button type="button" class="btn btn-warning btn-sm edit-expense" data-expense-id="{{ expense.id }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm delete-expense" data-expense-id="{{ expense.id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center">Нет данных для отображения</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления/редактирования расхода -->
+<div class="modal fade" id="addExpenseModal" tabindex="-1" aria-labelledby="addExpenseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addExpenseModalLabel">Добавить расход</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addExpenseForm">
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="apartment_title" class="form-label">Объект</label>
+                            <input type="text" class="form-control" id="apartment_title" name="apartment_title" list="apartmentsList">
+                            <datalist id="apartmentsList">
+                                {% for apt in unique_apartments %}
+                                <option value="{{ apt }}">
+                                {% endfor %}
+                            </datalist>
+                            <small class="text-muted">Оставьте пустым для общего расхода</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="expense_date" class="form-label">Дата расхода *</label>
+                            <input type="date" class="form-control" id="expense_date" name="expense_date" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="amount" class="form-label">Сумма расхода *</label>
+                            <input type="number" step="0.01" class="form-control" id="amount" name="amount" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="category" class="form-label">Категория</label>
+                            <input type="text" class="form-control" id="category" name="category" list="categoriesList">
+                            <datalist id="categoriesList">
+                                <option value="Ремонт">
+                                <option value="Обслуживание">
+                                <option value="Коммунальные услуги">
+                                <option value="Налоги">
+                                <option value="Страховка">
+                                <option value="Реклама">
+                                <option value="Прочее">
+                            </datalist>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="comment" class="form-label">Комментарий</label>
+                            <textarea class="form-control" id="comment" name="comment" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для редактирования расхода -->
+<div class="modal fade" id="editExpenseModal" tabindex="-1" aria-labelledby="editExpenseModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editExpenseModalLabel">Редактировать расход</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editExpenseForm">
+                <input type="hidden" id="edit_expense_id" name="expense_id">
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="edit_apartment_title" class="form-label">Объект</label>
+                            <input type="text" class="form-control" id="edit_apartment_title" name="apartment_title" list="editApartmentsList">
+                            <datalist id="editApartmentsList">
+                                {% for apt in unique_apartments %}
+                                <option value="{{ apt }}">
+                                {% endfor %}
+                            </datalist>
+                            <small class="text-muted">Оставьте пустым для общего расхода</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="edit_expense_date" class="form-label">Дата расхода *</label>
+                            <input type="date" class="form-control" id="edit_expense_date" name="expense_date" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="edit_amount" class="form-label">Сумма расхода *</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_amount" name="amount" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="edit_category" class="form-label">Категория</label>
+                            <input type="text" class="form-control" id="edit_category" name="category" list="editCategoriesList">
+                            <datalist id="editCategoriesList">
+                                <option value="Ремонт">
+                                <option value="Обслуживание">
+                                <option value="Коммунальные услуги">
+                                <option value="Налоги">
+                                <option value="Страховка">
+                                <option value="Реклама">
+                                <option value="Прочее">
+                            </datalist>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="edit_comment" class="form-label">Комментарий</label>
+                            <textarea class="form-control" id="edit_comment" name="comment" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Контейнер для уведомлений -->
+<div id="notificationContainer" style="position: fixed; top: 80px; right: 20px; z-index: 9999;"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/expenses.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Установить сегодняшнюю дату по умолчанию
+    const expenseDateInput = document.getElementById('expense_date');
+    if (expenseDateInput && !expenseDateInput.value) {
+        expenseDateInput.valueAsDate = new Date();
+    }
+});
+</script>
+{% endblock %}

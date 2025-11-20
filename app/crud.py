@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
-from app.models import Booking, Service, BookingService, Payment, MonthlyPlan
-from app.schemas import BookingSchema, PaymentCreate, PaymentUpdate, MonthlyPlanCreate, MonthlyPlanUpdate
+from app.models import Booking, Service, BookingService, Payment, MonthlyPlan, Expense
+from app.schemas import BookingSchema, PaymentCreate, PaymentUpdate, MonthlyPlanCreate, MonthlyPlanUpdate, ExpenseCreate, ExpenseUpdate
 from datetime import date, datetime
 from typing import Optional, List
 from loguru import logger
@@ -738,4 +738,91 @@ def delete_monthly_plan(db: Session, plan_id: int) -> bool:
     db.delete(plan)
     db.commit()
     logger.info(f"Удален план ID: {plan_id}")
+    return True
+
+
+# CRUD для расходов
+def create_expense(db: Session, expense_data: ExpenseCreate) -> Expense:
+    """
+    Создать новый расход
+    """
+    expense = Expense(**expense_data.model_dump())
+    db.add(expense)
+    db.commit()
+    db.refresh(expense)
+    logger.info(f"Создан новый расход ID: {expense.id} для объекта {expense.apartment_title}")
+    return expense
+
+
+def get_expenses(
+    db: Session,
+    filter_date: Optional[date] = None,
+    filter_date_from: Optional[date] = None,
+    filter_date_to: Optional[date] = None,
+    apartment_title: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 1000
+) -> List[Expense]:
+    """
+    Получить список расходов с фильтрацией
+    Поддерживает как фильтрацию по одной дате (filter_date), 
+    так и по диапазону (filter_date_from, filter_date_to)
+    """
+    query = db.query(Expense)
+    
+    # Фильтрация по одной дате (для обратной совместимости)
+    if filter_date:
+        query = query.filter(Expense.expense_date == filter_date)
+    # Или фильтрация по диапазону дат
+    elif filter_date_from or filter_date_to:
+        if filter_date_from:
+            query = query.filter(Expense.expense_date >= filter_date_from)
+        if filter_date_to:
+            query = query.filter(Expense.expense_date <= filter_date_to)
+    
+    if apartment_title:
+        query = query.filter(Expense.apartment_title == apartment_title)
+    
+    query = query.order_by(Expense.expense_date.desc(), Expense.created_at.desc())
+    
+    return query.offset(skip).limit(limit).all()
+
+
+def get_expense_by_id(db: Session, expense_id: int) -> Optional[Expense]:
+    """
+    Получить расход по ID
+    """
+    return db.query(Expense).filter(Expense.id == expense_id).first()
+
+
+def update_expense(db: Session, expense_id: int, expense_data: ExpenseUpdate) -> Optional[Expense]:
+    """
+    Обновить расход
+    """
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        return None
+    
+    update_data = expense_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(expense, key, value)
+    
+    expense.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(expense)
+    logger.info(f"Обновлен расход ID: {expense_id}")
+    return expense
+
+
+def delete_expense(db: Session, expense_id: int) -> bool:
+    """
+    Удалить расход
+    """
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        return False
+    
+    db.delete(expense)
+    db.commit()
+    logger.info(f"Удален расход ID: {expense_id}")
     return True
