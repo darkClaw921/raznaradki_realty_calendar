@@ -64,12 +64,17 @@
                             <i class="bi bi-list-ul"></i> Бронирования
                         </a>
                     </li>
+                    {% if request.cookies.get('user_type') == 'admin' %}
                     <li class="nav-item">
                         <a class="nav-link" href="/expenses">
                             <i class="bi bi-currency-exchange"></i> Расходы
                         </a>
                     </li>
-                    {% if request.cookies.get('user_type') == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="bi bi-speedometer2"></i> Дашборд
+                        </a>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/payments">
                             <i class="bi bi-cash-coin"></i> Поступления

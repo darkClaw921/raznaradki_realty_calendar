@@ -28,7 +28,7 @@ async def expenses_page(
     Страница с таблицей расходов
     """
     user_type = check_auth(request)
-    if not user_type:
+    if user_type != 'admin':
         return RedirectResponse(url="/login", status_code=302)
     
     # Парсинг дат фильтра
@@ -86,10 +86,10 @@ async def create_expense(
     Создать новый расход
     """
     user_type = check_auth(request)
-    if not user_type:
+    if user_type != 'admin':
         return JSONResponse(
             status_code=401,
-            content={"status": "error", "message": "Не авторизован"}
+            content={"status": "error", "message": "Только администратор может создавать расходы"}
         )
     
     try:
@@ -134,10 +134,10 @@ async def list_expenses(
     Получить список расходов в JSON формате
     """
     user_type = check_auth(request)
-    if not user_type:
+    if user_type != 'admin':
         return JSONResponse(
             status_code=401,
-            content={"status": "error", "message": "Не авторизован"}
+            content={"status": "error", "message": "Только администратор может просматривать расходы"}
         )
     
     # Парсинг дат фильтра
@@ -191,10 +191,10 @@ async def update_expense_endpoint(
     Обновить расход
     """
     user_type = check_auth(request)
-    if not user_type:
+    if user_type != 'admin':
         return JSONResponse(
             status_code=401,
-            content={"status": "error", "message": "Не авторизован"}
+            content={"status": "error", "message": "Только администратор может редактировать расходы"}
         )
     
     try:
@@ -247,10 +247,10 @@ async def delete_expense_endpoint(
     Удалить расход
     """
     user_type = check_auth(request)
-    if not user_type:
+    if user_type != 'admin':
         return JSONResponse(
             status_code=401,
-            content={"status": "error", "message": "Не авторизован"}
+            content={"status": "error", "message": "Только администратор может удалять расходы"}
         )
     
     success = crud.delete_expense(db, expense_id)
