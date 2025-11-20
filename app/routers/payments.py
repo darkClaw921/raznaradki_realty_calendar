@@ -4,6 +4,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import date, time
+from datetime import datetime
+import pytz
 from loguru import logger
 
 from app.database import get_db
@@ -41,19 +43,34 @@ async def payments_page(
     filter_date_from_obj = None
     filter_date_to_obj = None
     
+    # Если даты не указаны, устанавливаем диапазон на текущий месяц по МСК
+    if not filter_date_from and not filter_date_to and not filter_date:
+        msk_tz = pytz.timezone('Europe/Moscow')
+        now_msk = datetime.now(msk_tz)
+        filter_date_from_obj = date(now_msk.year, now_msk.month, 1)
+        # Последний день месяца
+        if now_msk.month == 12:
+            filter_date_to_obj = date(now_msk.year, 12, 31)
+        else:
+            filter_date_to_obj = date(now_msk.year, now_msk.month + 1, 1) - date.resolution
+        
+        # Обновляем строки для передачи в шаблон
+        filter_date_from = filter_date_from_obj.isoformat()
+        filter_date_to = filter_date_to_obj.isoformat()
+    
     if filter_date:
         try:
             filter_date_obj = date.fromisoformat(filter_date)
         except ValueError:
             logger.warning(f"Некорректная дата фильтра: {filter_date}")
     
-    if filter_date_from:
+    if filter_date_from and not filter_date_from_obj:
         try:
             filter_date_from_obj = date.fromisoformat(filter_date_from)
         except ValueError:
             logger.warning(f"Некорректная дата начала: {filter_date_from}")
     
-    if filter_date_to:
+    if filter_date_to and not filter_date_to_obj:
         try:
             filter_date_to_obj = date.fromisoformat(filter_date_to)
         except ValueError:
