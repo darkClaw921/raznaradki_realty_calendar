@@ -8,6 +8,7 @@ import sys
 
 from app.database import init_db
 from app.routers import webhook_router, web_router, payments_router, services_router, plans_router, expenses_router, dashboard_router
+from app.routers.realty import router as realty_router
 from prometheus_fastapi_instrumentator import Instrumentator
 # Настройка логирования через loguru
 logger.remove()  # Удаляем стандартный обработчик
@@ -125,6 +126,7 @@ app.include_router(plans_router)
 app.include_router(services_router)
 app.include_router(expenses_router)
 app.include_router(dashboard_router)
+app.include_router(realty_router)
 
 
 @app.get("/health")

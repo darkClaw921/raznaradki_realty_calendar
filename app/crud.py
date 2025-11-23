@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
-from app.models import Booking, Service, BookingService, Payment, MonthlyPlan, Expense
-from app.schemas import BookingSchema, PaymentCreate, PaymentUpdate, MonthlyPlanCreate, MonthlyPlanUpdate, ExpenseCreate, ExpenseUpdate
+from app.models import Booking, Service, BookingService, Payment, MonthlyPlan, Expense, Realty
+from app.schemas import BookingSchema, PaymentCreate, PaymentUpdate, MonthlyPlanCreate, MonthlyPlanUpdate, ExpenseCreate, ExpenseUpdate, RealtyCreate, RealtyUpdate
 from datetime import date, datetime
 from typing import Optional, List
 import re
@@ -115,6 +115,14 @@ def get_bookings(
             )
         )
     
+    # Фильтрация по активным объектам
+    # Получаем список неактивных объектов
+    inactive_realty = db.query(Realty.name).filter(Realty.is_active == False).all()
+    inactive_names = [r[0] for r in inactive_realty]
+    
+    if inactive_names:
+        query = query.filter(Booking.apartment_title.notin_(inactive_names))
+    
     # Сортировка по дате заезда
     query = query.order_by(Booking.begin_date.desc(), Booking.id.desc())
     
@@ -155,6 +163,13 @@ def get_bookings_by_begin_date(
                     func.upper(Booking.apartment_title).like(duplicate_pattern)
                 )
             )
+
+    # Фильтрация по активным объектам
+    inactive_realty = db.query(Realty.name).filter(Realty.is_active == False).all()
+    inactive_names = [r[0] for r in inactive_realty]
+    
+    if inactive_names:
+        query = query.filter(Booking.apartment_title.notin_(inactive_names))
 
     query = query.order_by(Booking.begin_date.desc())
     return query.all()
@@ -553,17 +568,45 @@ def delete_payment(db: Session, payment_id: int) -> bool:
 
 def get_unique_apartments(db: Session) -> List[str]:
     """
-    Получить список уникальных объектов недвижимости
-    Оптимизированный запрос с DISTINCT вместо загрузки всех записей
+    Получить список уникальных объектов недвижимости.
+    Если таблица Realty не пуста, берет активные объекты оттуда.
+    Если пуста, берет из Booking и попутно заполняет Realty.
     """
-    result = db.query(Booking.apartment_title).filter(
-        and_(
-            Booking.is_delete == False,
-            Booking.apartment_title.isnot(None)
-        )
-    ).distinct().order_by(Booking.apartment_title).all()
+    # Проверяем, есть ли записи в Realty
+    realty_count = db.query(Realty).count()
     
-    return [r[0] for r in result]
+    if realty_count > 0:
+        # Если есть, возвращаем только активные
+        result = db.query(Realty.name).filter(Realty.is_active == True).order_by(Realty.name).all()
+        return [r[0] for r in result]
+    else:
+        # Если нет, берем из Booking (старая логика)
+        result = db.query(Booking.apartment_title).filter(
+            and_(
+                Booking.is_delete == False,
+                Booking.apartment_title.isnot(None)
+            )
+        ).distinct().order_by(Booking.apartment_title).all()
+        
+        unique_titles = [r[0] for r in result if r[0]]
+        
+        # Автоматически заполняем Realty
+        if unique_titles:
+            logger.info("Auto-populating Realty table from existing Bookings...")
+            for title in unique_titles:
+                # Проверяем еще раз на всякий случай
+                exists = db.query(Realty).filter(Realty.name == title).first()
+                if not exists:
+                    try:
+                        new_realty = Realty(name=title, is_active=True)
+                        db.add(new_realty)
+                        db.commit()
+                    except Exception as e:
+                        db.rollback()
+                        logger.error(f"Failed to auto-create realty '{title}': {e}")
+            logger.info("Realty table populated.")
+            
+        return unique_titles
 
 
 def get_bookings_with_services(db: Session, filter_date: Optional[date] = None) -> List[dict]:
@@ -795,6 +838,107 @@ def get_expenses(
     
     return query.offset(skip).limit(limit).all()
 
+
+    return db.query(Expense).filter(Expense.id == expense_id).first()
+
+
+def update_expense(db: Session, expense_id: int, expense_data: ExpenseUpdate) -> Optional[Expense]:
+    """
+    Обновить расход
+    """
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        return None
+    
+    update_data = expense_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(expense, key, value)
+    
+    expense.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(expense)
+    logger.info(f"Обновлен расход ID: {expense_id}")
+    return expense
+
+
+def delete_expense(db: Session, expense_id: int) -> bool:
+    """
+    Удалить расход
+    """
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not expense:
+        return False
+    
+    db.delete(expense)
+    db.commit()
+    logger.info(f"Удален расход ID: {expense_id}")
+    return True
+
+
+# CRUD для объектов недвижимости (Realty)
+def get_all_realty(db: Session) -> List[Realty]:
+    """
+    Получить список всех объектов недвижимости (включая неактивные)
+    """
+    return db.query(Realty).order_by(Realty.name).all()
+
+
+def create_realty(db: Session, realty_data: RealtyCreate) -> Realty:
+    """
+    Создать новый объект недвижимости
+    """
+    realty = Realty(**realty_data.model_dump())
+    db.add(realty)
+    db.commit()
+    db.refresh(realty)
+    logger.info(f"Создан новый объект недвижимости: {realty.name}")
+    return realty
+
+
+def get_realty_by_id(db: Session, realty_id: int) -> Optional[Realty]:
+    """
+    Получить объект недвижимости по ID
+    """
+    return db.query(Realty).filter(Realty.id == realty_id).first()
+
+
+def update_realty(db: Session, realty_id: int, realty_data: RealtyUpdate) -> Optional[Realty]:
+    """
+    Обновить объект недвижимости
+    """
+    realty = db.query(Realty).filter(Realty.id == realty_id).first()
+    if not realty:
+        return None
+    
+    update_data = realty_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(realty, key, value)
+    
+    realty.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(realty)
+    logger.info(f"Обновлен объект недвижимости ID {realty_id}")
+    return realty
+
+
+def update_bookings_apartment_title(db: Session, old_title: str, new_title: str):
+    """
+    Обновить название объекта во всех бронированиях
+    """
+    # Обновляем bookings
+    db.query(Booking).filter(Booking.apartment_title == old_title).update(
+        {Booking.apartment_title: new_title},
+        synchronize_session=False
+    )
+    
+    # Обновляем payments (если там есть apartment_title)
+    db.query(Payment).filter(Payment.apartment_title == old_title).update(
+        {Payment.apartment_title: new_title},
+        synchronize_session=False
+    )
+    
+    db.commit()
+    logger.info(f"Обновлено название объекта с '{old_title}' на '{new_title}' во всех связанных записях")
 
 def get_expense_by_id(db: Session, expense_id: int) -> Optional[Expense]:
     """

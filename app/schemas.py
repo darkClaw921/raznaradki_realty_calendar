@@ -223,3 +223,28 @@ class ExpenseResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# Схемы для объектов недвижимости
+class RealtyCreate(BaseModel):
+    """Схема для создания объекта недвижимости"""
+    name: str
+    is_active: Optional[bool] = True
+
+
+class RealtyUpdate(BaseModel):
+    """Схема для обновления объекта недвижимости"""
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class RealtyResponse(BaseModel):
+    """Схема для ответа с объектом недвижимости"""
+    id: int
+    name: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Управление объектами - DMD Cottage{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4 mt-4">Управление объектами недвижимости</h2>
+
+            <div class="table-container">
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered" id="realtyTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">ID</th>
+                                <th>Название объекта</th>
+                                <th style="width: 150px;">Статус</th>
+                                <th style="width: 200px;">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for obj in realty_objects %}
+                            <tr data-id="{{ obj.id }}" class="{{ 'table-secondary' if not obj.is_active else '' }}">
+                                <td class="text-center">{{ obj.id }}</td>
+                                <td class="realty-name">{{ obj.name }}</td>
+                                <td class="text-center">
+                                    {% if obj.is_active %}
+                                    <span class="badge bg-success">Активен</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Неактивен</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-primary btn-edit me-1" title="Изменить">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button
+                                        class="btn btn-sm {{ 'btn-success' if not obj.is_active else 'btn-danger' }} btn-toggle-status"
+                                        title="{{ 'Активировать' if not obj.is_active else 'Деактивировать' }}">
+                                        <i
+                                            class="bi {{ 'bi-check-circle' if not obj.is_active else 'bi-slash-circle' }}"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования -->
+<div class="modal fade" id="editRealtyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Изменить объект</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editRealtyForm">
+                    <input type="hidden" id="editRealtyId" name="realty_id">
+                    <div class="mb-3">
+                        <label for="editRealtyName" class="form-label">Название объекта</label>
+                        <input type="text" class="form-control" id="editRealtyName" name="name" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveRealtyBtn">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/realty.js"></script>
+{% endblock %}

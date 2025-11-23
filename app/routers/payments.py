@@ -36,7 +36,7 @@ async def payments_page(
     if not user_type:
         return RedirectResponse(url="/login", status_code=302)
     
-    if user_type != 'admin':
+    if user_type not in ['admin', 'user']:
         return RedirectResponse(url="/bookings", status_code=302)
     
     # Парсинг дат фильтра
@@ -253,7 +253,7 @@ async def create_payment(
             content={"status": "error", "message": "Не авторизован"}
         )
     
-    if user_type != 'admin':
+    if user_type not in ['admin', 'user']:
         return JSONResponse(
             status_code=403,
             content={"status": "error", "message": "Доступ запрещен"}
@@ -372,7 +372,7 @@ async def list_payments(
             content={"status": "error", "message": "Не авторизован"}
         )
     
-    if user_type != 'admin':
+    if user_type not in ['admin', 'user']:
         return JSONResponse(
             status_code=403,
             content={"status": "error", "message": "Доступ запрещен"}
@@ -447,7 +447,7 @@ async def update_payment_endpoint(
             content={"status": "error", "message": "Не авторизован"}
         )
     
-    if user_type != 'admin':
+    if user_type not in ['admin', 'user']:
         return JSONResponse(
             status_code=403,
             content={"status": "error", "message": "Доступ запрещен"}
@@ -519,7 +519,7 @@ async def delete_payment_endpoint(
             content={"status": "error", "message": "Не авторизован"}
         )
     
-    if user_type != 'admin':
+    if user_type not in ['admin', 'user']:
         return JSONResponse(
             status_code=403,
             content={"status": "error", "message": "Доступ запрещен"}

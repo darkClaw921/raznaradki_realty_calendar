@@ -155,3 +155,17 @@ class Expense(Base):
     
     def __repr__(self):
         return f"<Expense(id={self.id}, apartment_title={self.apartment_title}, expense_date={self.expense_date}, amount={self.amount})>"
+
+
+class Realty(Base):
+    """Модель объектов недвижимости"""
+    __tablename__ = "realty"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, unique=True, index=True)  # Название объекта
+    is_active = Column(Boolean, default=True)  # Активен ли объект
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<Realty(id={self.id}, name={self.name}, is_active={self.is_active})>"

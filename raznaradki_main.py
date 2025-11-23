@@ -15,7 +15,7 @@ if __name__ == "__main__":
         "app.main:app",
         host="0.0.0.0",
         port=PORT,
-        workers=3,
+        # workers=3,
 
     )
 
