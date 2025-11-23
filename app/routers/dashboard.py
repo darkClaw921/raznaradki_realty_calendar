@@ -7,6 +7,10 @@ from typing import Optional, Dict, Any
 import re
 from functools import lru_cache
 import time
+import io
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from fastapi.responses import StreamingResponse
 from app.database import get_db
 from app.auth import create_session_cookie
 from app.config import get_settings
@@ -362,4 +366,356 @@ async def dashboard_page(
         )
     except Exception as e:
         logger.error(f"Error in dashboard_page: {e}")
+        return Response(status_code=500, content="Internal Server Error")
+
+
+@router.get("/dashboard/export")
+async def export_dashboard_to_excel(
+    request: Request,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Экспорт дашборда в Excel
+    """
+    try:
+        start_time = time.time()
+        
+        # Проверка авторизации (только для админов)
+        user_type = check_auth(request)
+        if not user_type or user_type != 'admin':
+            return Response(status_code=403)
+        
+        # Если год не указан, используем текущий
+        if not year:
+            year = datetime.now().year
+            
+        # Получаем финансовые данные
+        financial_data = get_annual_financial_data(db, year)
+        yearly_totals = calculate_yearly_totals(financial_data)
+        apartment_summary = get_apartment_summary(financial_data)
+        
+        # Создаем Excel файл
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"Дашборд {year}"
+        
+        # Стили
+        header_fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+        header_font = Font(bold=True)
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Заголовки месяцев
+        months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
+        
+        # Первая строка заголовков
+        ws.merge_cells('A1:A2')
+        ws['A1'] = 'Объект'
+        ws['A1'].fill = header_fill
+        ws['A1'].font = header_font
+        ws['A1'].alignment = center_align
+        ws['A1'].border = border
+        
+        # Итого
+        ws.merge_cells('B1:D1')
+        ws['B1'] = 'Итого'
+        ws['B1'].fill = header_fill
+        ws['B1'].font = header_font
+        ws['B1'].alignment = center_align
+        ws['B1'].border = border
+        
+        # Месяцы
+        col_idx = 5
+        for month_name in months:
+            end_col_idx = col_idx + 2
+            cell = ws.cell(row=1, column=col_idx)
+            ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=end_col_idx)
+            cell.value = month_name
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+            cell.border = border
+            # Apply border to merged cells
+            for i in range(3):
+                ws.cell(row=1, column=col_idx + i).border = border
+            col_idx += 3
+            
+        # Вторая строка заголовков (Д/Р/П)
+        headers = ['Доход', 'Расход', 'Прибыль']
+        
+        # Для Итого
+        for i, header in enumerate(headers):
+            cell = ws.cell(row=2, column=2 + i)
+            cell.value = header
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+            cell.border = border
+            
+        # Для месяцев
+        col_idx = 5
+        for _ in range(12):
+            for header in headers:
+                cell = ws.cell(row=2, column=col_idx)
+                cell.value = header
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_align
+                cell.border = border
+                col_idx += 1
+                
+        # Данные
+        row_idx = 3
+        
+        # Стили для данных
+        text_success = Font(color="198754")  # Green
+        text_danger = Font(color="DC3545")   # Red
+        
+        for base_apartment, apartment_data in apartment_summary.items():
+            # Объект
+            cell = ws.cell(row=row_idx, column=1)
+            cell.value = base_apartment
+            cell.font = Font(bold=True)
+            cell.border = border
+            
+            # Итого по объекту
+            # Доход
+            cell = ws.cell(row=row_idx, column=2)
+            cell.value = apartment_data['total_income']
+            cell.number_format = '#,##0'
+            cell.font = text_success
+            cell.border = border
+            
+            # Расход
+            cell = ws.cell(row=row_idx, column=3)
+            cell.value = apartment_data['total_expenses']
+            cell.number_format = '#,##0'
+            cell.font = text_danger
+            cell.border = border
+            
+            # Прибыль
+            cell = ws.cell(row=row_idx, column=4)
+            cell.value = apartment_data['total_profit']
+            cell.number_format = '#,##0'
+            cell.font = text_success if apartment_data['total_profit'] >= 0 else text_danger
+            cell.border = border
+            
+            # По месяцам
+            col_idx = 5
+            for month in range(1, 13):
+                month_key = f"{year}-{month:02d}"
+                income = 0
+                expenses = 0
+                profit = 0
+                
+                if month_key in financial_data:
+                    month_data = financial_data[month_key]
+                    if base_apartment in month_data['objects']:
+                        obj_data = month_data['objects'][base_apartment]
+                        income = obj_data['income']
+                        expenses = obj_data['expenses']
+                        profit = obj_data['profit']
+                
+                # Доход
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.value = income if income != 0 else '-'
+                if income != 0:
+                    cell.number_format = '#,##0'
+                    cell.font = text_success
+                else:
+                    cell.alignment = Alignment(horizontal='center')
+                cell.border = border
+                
+                # Расход
+                cell = ws.cell(row=row_idx, column=col_idx + 1)
+                cell.value = expenses if expenses != 0 else '-'
+                if expenses != 0:
+                    cell.number_format = '#,##0'
+                    cell.font = text_danger
+                else:
+                    cell.alignment = Alignment(horizontal='center')
+                cell.border = border
+                
+                # Прибыль
+                cell = ws.cell(row=row_idx, column=col_idx + 2)
+                cell.value = profit if profit != 0 else '-'
+                if profit != 0:
+                    cell.number_format = '#,##0'
+                    cell.font = text_success if profit >= 0 else text_danger
+                else:
+                    cell.alignment = Alignment(horizontal='center')
+                cell.border = border
+                
+                col_idx += 3
+            
+            row_idx += 1
+            
+        # Общие расходы
+        cell = ws.cell(row=row_idx, column=1)
+        cell.value = "Общие расходы"
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid") # Warning color
+        cell.border = border
+        
+        # Итого общие расходы
+        cell = ws.cell(row=row_idx, column=2)
+        cell.value = "-"
+        cell.alignment = Alignment(horizontal='center')
+        cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+        cell.border = border
+        
+        cell = ws.cell(row=row_idx, column=3)
+        cell.value = yearly_totals['total_general_expenses']
+        cell.number_format = '#,##0'
+        cell.font = text_danger
+        cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+        cell.border = border
+        
+        cell = ws.cell(row=row_idx, column=4)
+        cell.value = "-"
+        cell.alignment = Alignment(horizontal='center')
+        cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+        cell.border = border
+        
+        col_idx = 5
+        for month in range(1, 13):
+            month_key = f"{year}-{month:02d}"
+            general_expenses = 0
+            if month_key in financial_data:
+                general_expenses = financial_data[month_key].get('general_expenses', 0)
+                
+            # Доход (-)
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.value = "-"
+            cell.alignment = Alignment(horizontal='center')
+            cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+            cell.border = border
+            
+            # Расход
+            cell = ws.cell(row=row_idx, column=col_idx + 1)
+            cell.value = general_expenses if general_expenses != 0 else '-'
+            if general_expenses != 0:
+                cell.number_format = '#,##0'
+                cell.font = text_danger
+            else:
+                cell.alignment = Alignment(horizontal='center')
+            cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+            cell.border = border
+            
+            # Прибыль (-)
+            cell = ws.cell(row=row_idx, column=col_idx + 2)
+            cell.value = "-"
+            cell.alignment = Alignment(horizontal='center')
+            cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
+            cell.border = border
+            
+            col_idx += 3
+            
+        row_idx += 1
+        
+        # ИТОГО
+        cell = ws.cell(row=row_idx, column=1)
+        cell.value = "ИТОГО"
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid") # Secondary color
+        cell.border = border
+        
+        # Итого всего
+        # Доход
+        cell = ws.cell(row=row_idx, column=2)
+        cell.value = yearly_totals['total_income']
+        cell.number_format = '#,##0'
+        cell.font = text_success
+        cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+        cell.border = border
+        
+        # Расход
+        cell = ws.cell(row=row_idx, column=3)
+        cell.value = yearly_totals['total_expenses'] + yearly_totals.get('total_general_expenses', 0)
+        cell.number_format = '#,##0'
+        cell.font = text_danger
+        cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+        cell.border = border
+        
+        # Прибыль
+        total_profit = yearly_totals['total_profit'] - yearly_totals.get('total_general_expenses', 0)
+        cell = ws.cell(row=row_idx, column=4)
+        cell.value = total_profit
+        cell.number_format = '#,##0'
+        cell.font = text_success if total_profit >= 0 else text_danger
+        cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+        cell.border = border
+        
+        # По месяцам
+        col_idx = 5
+        for month in range(1, 13):
+            month_key = f"{year}-{month:02d}"
+            income = 0
+            expenses = 0
+            profit = 0
+            general_expenses = 0
+            
+            if month_key in financial_data:
+                month_data = financial_data[month_key]
+                income = month_data['total_income']
+                expenses = month_data['total_expenses']
+                profit = month_data['total_profit']
+                general_expenses = month_data.get('general_expenses', 0)
+            
+            # Доход
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.value = income
+            cell.number_format = '#,##0'
+            cell.font = text_success
+            cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+            cell.border = border
+            
+            # Расход
+            cell = ws.cell(row=row_idx, column=col_idx + 1)
+            cell.value = expenses + general_expenses
+            cell.number_format = '#,##0'
+            cell.font = text_danger
+            cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+            cell.border = border
+            
+            # Прибыль
+            month_profit = profit - general_expenses
+            cell = ws.cell(row=row_idx, column=col_idx + 2)
+            cell.value = month_profit
+            cell.number_format = '#,##0'
+            cell.font = text_success if month_profit >= 0 else text_danger
+            cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
+            cell.border = border
+            
+            col_idx += 3
+            
+        # Автоширина колонок
+        ws.column_dimensions['A'].width = 25
+        for col in range(2, col_idx):
+            col_letter = chr(64 + col) if col <= 26 else f'A{chr(64 + col - 26)}'
+            ws.column_dimensions[col_letter].width = 15
+            
+        # Сохраняем в BytesIO
+        excel_file = io.BytesIO()
+        wb.save(excel_file)
+        excel_file.seek(0)
+        
+        filename = f"dashboard_{year}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        end_time = time.time()
+        logger.info(f"Exported dashboard for {year} in {end_time - start_time:.2f} seconds")
+        
+        return StreamingResponse(
+            excel_file,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"Error in export_dashboard_to_excel: {e}")
         return Response(status_code=500, content="Internal Server Error")
