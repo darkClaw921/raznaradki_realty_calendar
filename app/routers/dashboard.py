@@ -410,6 +410,13 @@ async def export_dashboard_to_excel(
             top=Side(style='thin'),
             bottom=Side(style='thin')
         )
+        # Жирная правая граница для разделения месяцев
+        thick_right_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thick'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
         
         # Заголовки месяцев
         months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь']
@@ -429,6 +436,8 @@ async def export_dashboard_to_excel(
         ws['B1'].font = header_font
         ws['B1'].alignment = center_align
         ws['B1'].border = border
+        # Жирная правая граница после "Итого" (колонка D)
+        ws['D1'].border = thick_right_border
         
         # Месяцы
         col_idx = 5
@@ -441,9 +450,12 @@ async def export_dashboard_to_excel(
             cell.font = header_font
             cell.alignment = center_align
             cell.border = border
-            # Apply border to merged cells
+            # Apply border to merged cells - жирная правая граница для последней ячейки месяца
             for i in range(3):
-                ws.cell(row=1, column=col_idx + i).border = border
+                cell_border = thick_right_border if i == 2 else border
+                ws.cell(row=1, column=col_idx + i).border = cell_border
+            # Также применяем жирную границу к последней ячейке объединенной области
+            ws.cell(row=1, column=end_col_idx).border = thick_right_border
             col_idx += 3
             
         # Вторая строка заголовков (Д/Р/П)
@@ -456,18 +468,20 @@ async def export_dashboard_to_excel(
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = center_align
-            cell.border = border
+            # Жирная правая граница для последней колонки "Итого" (колонка D)
+            cell.border = thick_right_border if i == 2 else border
             
         # Для месяцев
         col_idx = 5
         for _ in range(12):
-            for header in headers:
+            for j, header in enumerate(headers):
                 cell = ws.cell(row=2, column=col_idx)
                 cell.value = header
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = center_align
-                cell.border = border
+                # Жирная правая граница для последней колонки каждого месяца
+                cell.border = thick_right_border if j == 2 else border
                 col_idx += 1
                 
         # Данные
@@ -504,7 +518,7 @@ async def export_dashboard_to_excel(
             cell.value = apartment_data['total_profit']
             cell.number_format = '#,##0'
             cell.font = text_success if apartment_data['total_profit'] >= 0 else text_danger
-            cell.border = border
+            cell.border = thick_right_border  # Жирная правая граница после "Итого"
             
             # По месяцам
             col_idx = 5
@@ -550,7 +564,7 @@ async def export_dashboard_to_excel(
                     cell.font = text_success if profit >= 0 else text_danger
                 else:
                     cell.alignment = Alignment(horizontal='center')
-                cell.border = border
+                cell.border = thick_right_border  # Жирная правая граница после каждого месяца
                 
                 col_idx += 3
             
@@ -581,7 +595,7 @@ async def export_dashboard_to_excel(
         cell.value = "-"
         cell.alignment = Alignment(horizontal='center')
         cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
-        cell.border = border
+        cell.border = thick_right_border  # Жирная правая граница после "Итого"
         
         col_idx = 5
         for month in range(1, 13):
@@ -613,7 +627,7 @@ async def export_dashboard_to_excel(
             cell.value = "-"
             cell.alignment = Alignment(horizontal='center')
             cell.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid")
-            cell.border = border
+            cell.border = thick_right_border  # Жирная правая граница после каждого месяца
             
             col_idx += 3
             
@@ -650,7 +664,7 @@ async def export_dashboard_to_excel(
         cell.number_format = '#,##0'
         cell.font = text_success if total_profit >= 0 else text_danger
         cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
-        cell.border = border
+        cell.border = thick_right_border  # Жирная правая граница после "Итого"
         
         # По месяцам
         col_idx = 5
@@ -691,7 +705,7 @@ async def export_dashboard_to_excel(
             cell.number_format = '#,##0'
             cell.font = text_success if month_profit >= 0 else text_danger
             cell.fill = PatternFill(start_color="E2E3E5", end_color="E2E3E5", fill_type="solid")
-            cell.border = border
+            cell.border = thick_right_border  # Жирная правая граница после каждого месяца
             
             col_idx += 3
             

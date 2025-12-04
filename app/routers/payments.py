@@ -140,7 +140,7 @@ async def payments_page(
         if active_plan:
             total_plan = float(active_plan.target_amount)
     
-    # Расчет факта реального заселения: сумма amount всех бронирований с begin_date в диапазоне фильтра
+    # Расчет факта реального заселения: сумма prepayment всех бронирований с begin_date в диапазоне фильтра
     bookings_for_fact: List = []
     if filter_date_obj:
         bookings_for_fact = crud.get_bookings_by_begin_date(
@@ -156,10 +156,11 @@ async def payments_page(
             apartment_title=apartment_title
         )
     
-    total_fact = sum(float(booking.amount or 0.0) for booking in bookings_for_fact)
+    total_fact = sum(float(booking.prepayment or 0.0) for booking in bookings_for_fact)
     
     # Группировка по объектам с учётом дублей
     grouped_fact_bookings = []
+    total_fact_amount = 0.0
     total_fact_prepayment = 0.0
     total_fact_payment = 0.0
     if bookings_for_fact:
@@ -190,6 +191,7 @@ async def payments_page(
         grouped_fact_bookings.sort(key=lambda g: g["title"])
         for group in grouped_fact_bookings:
             group["items"].sort(key=lambda b: (b.apartment_title or '').upper())
+            total_fact_amount += group["total_amount"]
             total_fact_prepayment += group["total_prepayment"]
             total_fact_payment += group["total_payment"]
     total_real_payments = sum(float(payment.amount or 0.0) for payment in payments_list)
@@ -209,6 +211,7 @@ async def payments_page(
         "apartment_title": apartment_title,
         "total_plan": total_plan,
         "total_fact": total_fact,
+        "total_fact_amount": total_fact_amount,
         "total_fact_prepayment": total_fact_prepayment,
         "total_fact_payment": total_fact_payment,
         "total_payments_amount": total_payments_amount,

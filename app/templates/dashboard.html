@@ -34,20 +34,20 @@
                     <thead class="table-light">
                         <tr>
                             <th rowspan="2" class="sticky-col">Объект</th>
-                            <th colspan="3" class="text-center">Итого</th>
+                            <th colspan="3" class="text-center month-divider">Итого</th>
                             {% for month in range(1, 13) %}
-                            <th colspan="3" class="text-center">{{ ['Январь', 'Февраль', 'Март', 'Апрель', 'Май',
+                            <th colspan="3" class="text-center month-divider">{{ ['Январь', 'Февраль', 'Март', 'Апрель', 'Май',
                                 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'][month-1] }}</th>
                             {% endfor %}
                         </tr>
                         <tr>
                             <th class="small-header">Доход</th>
                             <th class="small-header">Расход</th>
-                            <th class="small-header">Прибыль</th>
+                            <th class="small-header month-divider">Прибыль</th>
                             {% for i in range(12) %}
                             <th class="small-header">Доход</th>
                             <th class="small-header">Расход</th>
-                            <th class="small-header">Прибыль</th>
+                            <th class="small-header month-divider">Прибыль</th>
                             {% endfor %}
                         </tr>
                     </thead>
@@ -63,7 +63,7 @@
                             <td class="text-danger fw-light small">{{
                                 "{:,.0f}".format(apartment_data.total_expenses)|replace(',', ' ') }}</td>
                             <td
-                                class="{% if apartment_data.total_profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-light small">
+                                class="{% if apartment_data.total_profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-light small month-divider">
                                 {{ "{:,.0f}".format(apartment_data.total_profit)|replace(',', ' ') }}
                             </td>
                             {% for month in range(1, 13) %}
@@ -77,18 +77,18 @@
                             <td class="text-danger fw-light small">{{ "{:,.0f}".format(obj_data.expenses)|replace(',', '
                                 ') }}</td>
                             <td
-                                class="{% if obj_data.profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-light small">
+                                class="{% if obj_data.profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-light small month-divider">
                                 {{ "{:,.0f}".format(obj_data.profit)|replace(',', ' ') }}
                             </td>
                             {% else %}
                             <td class="text-muted">-</td>
                             <td class="text-muted">-</td>
-                            <td class="text-muted">-</td>
+                            <td class="text-muted month-divider">-</td>
                             {% endif %}
                             {% else %}
                             <td class="text-muted">-</td>
                             <td class="text-muted">-</td>
-                            <td class="text-muted">-</td>
+                            <td class="text-muted month-divider">-</td>
                             {% endif %}
                             {% endfor %}
                         </tr>
@@ -100,7 +100,7 @@
                             <td class="text-muted small">-</td>
                             <td class="text-danger fw-light small">{{
                                 "{:,.0f}".format(yearly_totals.total_general_expenses or 0)|replace(',', ' ') }}</td>
-                            <td class="text-muted small">-</td>
+                            <td class="text-muted small month-divider">-</td>
                             {% for month in range(1, 13) %}
                             {% set month_key = "{}-{:02d}".format(year, month) %}
                             {% if month_key in financial_data %}
@@ -108,11 +108,11 @@
                             <td class="text-muted small">-</td>
                             <td class="text-danger fw-light small">{{ "{:,.0f}".format(month_data.general_expenses or
                                 0)|replace(',', ' ') }}</td>
-                            <td class="text-muted small">-</td>
+                            <td class="text-muted small month-divider">-</td>
                             {% else %}
                             <td class="text-muted">-</td>
                             <td class="text-muted">-</td>
-                            <td class="text-muted">-</td>
+                            <td class="text-muted month-divider">-</td>
                             {% endif %}
                             {% endfor %}
                         </tr>
@@ -125,7 +125,7 @@
                             <td class="text-danger fw-light small">{{ "{:,.0f}".format(yearly_totals.total_expenses +
                                 (yearly_totals.total_general_expenses or 0))|replace(',', ' ') }}</td>
                             <td
-                                class="{% if yearly_totals.total_profit >= (yearly_totals.total_general_expenses or 0) %}text-success{% else %}text-danger{% endif %} fw-light small">
+                                class="{% if yearly_totals.total_profit >= (yearly_totals.total_general_expenses or 0) %}text-success{% else %}text-danger{% endif %} fw-light small month-divider">
                                 {{ "{:,.0f}".format(yearly_totals.total_profit - (yearly_totals.total_general_expenses
                                 or 0))|replace(',', ' ') }}
                             </td>
@@ -138,14 +138,14 @@
                             <td class="text-danger fw-light small">{{ "{:,.0f}".format(month_data.total_expenses +
                                 (month_data.general_expenses or 0))|replace(',', ' ') }}</td>
                             <td
-                                class="{% if month_data.total_profit >= (month_data.general_expenses or 0) %}text-success{% else %}text-danger{% endif %} fw-light small">
+                                class="{% if month_data.total_profit >= (month_data.general_expenses or 0) %}text-success{% else %}text-danger{% endif %} fw-light small month-divider">
                                 {{ "{:,.0f}".format(month_data.total_profit - (month_data.general_expenses or
                                 0))|replace(',', ' ') }}
                             </td>
                             {% else %}
                             <td class="text-muted">-</td>
                             <td class="text-muted">-</td>
-                            <td class="text-muted">-</td>
+                            <td class="text-muted month-divider">-</td>
                             {% endif %}
                             {% endfor %}
                         </tr>
@@ -250,6 +250,11 @@
         background-color: #e2e3e5;
         /* Bootstrap table-secondary color */
         border-right: 2px solid #dee2e6;
+    }
+
+    /* Жирные вертикальные границы между месяцами */
+    .month-divider {
+        border-right: 3px solid #000 !important;
     }
 </style>
 {% endblock %}
