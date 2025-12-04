@@ -30,11 +30,9 @@ async def realty_management_page(
     if user_type != 'admin':
         return RedirectResponse(url="/bookings", status_code=302)
     
-    # Получаем все объекты (активные и неактивные)
-    # Если таблица пустая, get_unique_apartments заполнит её (если вызвать его)
-    # Но здесь мы вызываем get_all_realty. Если она пустая, нам нужно запустить автозаполнение.
-    # Проще всего вызвать get_unique_apartments один раз, чтобы гарантировать заполнение.
-    crud.get_unique_apartments(db)
+    # Синхронизируем объекты из всех источников (bookings, payments, expenses)
+    # Это гарантирует, что все объекты из поступлений будут в таблице realty
+    crud.sync_realty_from_all_sources(db)
     
     realty_objects = crud.get_all_realty(db)
     

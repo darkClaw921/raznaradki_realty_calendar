@@ -483,6 +483,20 @@ def create_payment(db: Session, payment_data: PaymentCreate) -> Payment:
     db.add(payment)
     db.commit()
     db.refresh(payment)
+    
+    # Автоматически добавляем объект в Realty, если его там нет
+    if payment.apartment_title:
+        exists = db.query(Realty).filter(Realty.name == payment.apartment_title).first()
+        if not exists:
+            try:
+                new_realty = Realty(name=payment.apartment_title, is_active=True)
+                db.add(new_realty)
+                db.commit()
+                logger.info(f"Auto-added realty object '{payment.apartment_title}' from payment")
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to auto-create realty '{payment.apartment_title}': {e}")
+    
     logger.info(f"Создано новое поступление ID: {payment.id} для объекта {payment.apartment_title}")
     return payment
 
@@ -566,11 +580,66 @@ def delete_payment(db: Session, payment_id: int) -> bool:
     return True
 
 
+def sync_realty_from_all_sources(db: Session):
+    """
+    Синхронизирует таблицу Realty со всеми источниками данных:
+    - bookings (apartment_title)
+    - payments (apartment_title)
+    - expenses (apartment_title)
+    Добавляет новые объекты, если их еще нет в Realty.
+    """
+    all_titles = set()
+    
+    # Собираем объекты из bookings
+    bookings_titles = db.query(Booking.apartment_title).filter(
+        and_(
+            Booking.is_delete == False,
+            Booking.apartment_title.isnot(None)
+        )
+    ).distinct().all()
+    for title in bookings_titles:
+        if title[0]:
+            all_titles.add(title[0])
+    
+    # Собираем объекты из payments
+    payments_titles = db.query(Payment.apartment_title).filter(
+        Payment.apartment_title.isnot(None)
+    ).distinct().all()
+    for title in payments_titles:
+        if title[0]:
+            all_titles.add(title[0])
+    
+    # Собираем объекты из expenses
+    expenses_titles = db.query(Expense.apartment_title).filter(
+        Expense.apartment_title.isnot(None)
+    ).distinct().all()
+    for title in expenses_titles:
+        if title[0]:
+            all_titles.add(title[0])
+    
+    # Добавляем отсутствующие объекты в Realty
+    added_count = 0
+    for title in all_titles:
+        exists = db.query(Realty).filter(Realty.name == title).first()
+        if not exists:
+            try:
+                new_realty = Realty(name=title, is_active=True)
+                db.add(new_realty)
+                added_count += 1
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to create realty '{title}': {e}")
+    
+    if added_count > 0:
+        db.commit()
+        logger.info(f"Added {added_count} new realty objects from all sources")
+
+
 def get_unique_apartments(db: Session) -> List[str]:
     """
     Получить список уникальных объектов недвижимости.
     Если таблица Realty не пуста, берет активные объекты оттуда.
-    Если пуста, берет из Booking и попутно заполняет Realty.
+    Если пуста, синхронизирует из всех источников (bookings, payments, expenses) и заполняет Realty.
     """
     # Проверяем, есть ли записи в Realty
     realty_count = db.query(Realty).count()
@@ -580,33 +649,12 @@ def get_unique_apartments(db: Session) -> List[str]:
         result = db.query(Realty.name).filter(Realty.is_active == True).order_by(Realty.name).all()
         return [r[0] for r in result]
     else:
-        # Если нет, берем из Booking (старая логика)
-        result = db.query(Booking.apartment_title).filter(
-            and_(
-                Booking.is_delete == False,
-                Booking.apartment_title.isnot(None)
-            )
-        ).distinct().order_by(Booking.apartment_title).all()
+        # Если нет, синхронизируем из всех источников
+        sync_realty_from_all_sources(db)
         
-        unique_titles = [r[0] for r in result if r[0]]
-        
-        # Автоматически заполняем Realty
-        if unique_titles:
-            logger.info("Auto-populating Realty table from existing Bookings...")
-            for title in unique_titles:
-                # Проверяем еще раз на всякий случай
-                exists = db.query(Realty).filter(Realty.name == title).first()
-                if not exists:
-                    try:
-                        new_realty = Realty(name=title, is_active=True)
-                        db.add(new_realty)
-                        db.commit()
-                    except Exception as e:
-                        db.rollback()
-                        logger.error(f"Failed to auto-create realty '{title}': {e}")
-            logger.info("Realty table populated.")
-            
-        return unique_titles
+        # Теперь возвращаем активные объекты из Realty
+        result = db.query(Realty.name).filter(Realty.is_active == True).order_by(Realty.name).all()
+        return [r[0] for r in result]
 
 
 def get_bookings_with_services(db: Session, filter_date: Optional[date] = None) -> List[dict]:
@@ -801,6 +849,20 @@ def create_expense(db: Session, expense_data: ExpenseCreate) -> Expense:
     db.add(expense)
     db.commit()
     db.refresh(expense)
+    
+    # Автоматически добавляем объект в Realty, если его там нет
+    if expense.apartment_title:
+        exists = db.query(Realty).filter(Realty.name == expense.apartment_title).first()
+        if not exists:
+            try:
+                new_realty = Realty(name=expense.apartment_title, is_active=True)
+                db.add(new_realty)
+                db.commit()
+                logger.info(f"Auto-added realty object '{expense.apartment_title}' from expense")
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Failed to auto-create realty '{expense.apartment_title}': {e}")
+    
     logger.info(f"Создан новый расход ID: {expense.id} для объекта {expense.apartment_title}")
     return expense
 
