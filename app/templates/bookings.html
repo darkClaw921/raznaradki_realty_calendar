@@ -229,9 +229,9 @@
                         <td>{{ group.checkin.client_phone or '' }}</td>
                         <td>{{ group.checkin.end_date.strftime('%d.%m.%Y') if group.checkin.end_date else '' }}</td>
                         <td>{{ group.checkin.number_of_nights or '' }}</td>
-                        <td>{{ '{:,.0f}'.format(group.checkin.amount) if group.checkin.amount else '0' }}</td>
-                        <td>{{ '{:,.0f}'.format(group.checkin.prepayment) if group.checkin.prepayment else '0' }}</td>
-                        <td>{{ '{:,.0f}'.format((group.checkin.amount or 0) - (group.checkin.prepayment or 0)) }}</td>
+                        <td>{{ '{:,.0f}'.format((group.checkin.amount or 0) - (group.checkin.platform_tax or 0)) }}</td>
+                        <td>{{ '{:,.0f}'.format((group.checkin.prepayment or 0) - (group.checkin.platform_tax or 0)) }}</td>
+                        <td>{{ '{:,.0f}'.format(group.checkin.balance_to_be_paid_1 or 0) }}</td>
                         <td class="services-cell" data-booking-id="{{ group.checkin.id }}">
                             <div class="services-total" 
                                  data-bs-toggle="popover" 

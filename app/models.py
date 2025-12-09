@@ -25,6 +25,8 @@ class Booking(Base):
     amount = Column(Numeric(10, 2), nullable=True)  # Общая сумма
     prepayment = Column(Numeric(10, 2), nullable=True)  # Предоплата
     payment = Column(Numeric(10, 2), nullable=True)  # Оплата
+    platform_tax = Column(Numeric(10, 2), nullable=True)  # Комиссия площадки
+    balance_to_be_paid_1 = Column(Numeric(10, 2), nullable=True)  # Доплата
     
     # Время заезда/выезда
     arrival_time = Column(Time, nullable=True)  # Время заселения

@@ -45,6 +45,8 @@ def create_or_update_booking(db: Session, booking_data: BookingSchema, action: s
         "amount": booking_data.amount,
         "prepayment": booking_data.prepayment,
         "payment": booking_data.payment,
+        "platform_tax": booking_data.platform_tax,
+        "balance_to_be_paid_1": booking_data.balance_to_be_paid_1,
         "arrival_time": booking_data.arrival_time,
         "departure_time": booking_data.departure_time,
         "notes": booking_data.notes,

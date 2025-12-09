@@ -450,7 +450,17 @@ async def export_to_excel(
         checkin_nights = group['checkin'].number_of_nights if group['checkin'] else ''
         checkin_amount = float(group['checkin'].amount) if group['checkin'] and group['checkin'].amount else 0
         checkin_prepayment = float(group['checkin'].prepayment) if group['checkin'] and group['checkin'].prepayment else 0
-        checkin_doplata = checkin_amount - checkin_prepayment
+        # Обработка platform_tax: после валидации Pydantic будет float или None
+        # Может приходить как null, "4554.0" (строка) или число
+        checkin_platform_tax = float(group['checkin'].platform_tax) if group['checkin'] and group['checkin'].platform_tax is not None else 0
+        
+        # Обработка balance_to_be_paid_1: после валидации Pydantic будет float или None
+        # Может приходить как null или число 16951
+        checkin_balance_to_be_paid_1 = float(group['checkin'].balance_to_be_paid_1) if group['checkin'] and group['checkin'].balance_to_be_paid_1 is not None else 0
+        # Общая сумма и предоплата с вычетом комиссии площадки
+        checkin_amount_display = checkin_amount - checkin_platform_tax
+        checkin_prepayment_display = checkin_prepayment - checkin_platform_tax
+        checkin_doplata = checkin_balance_to_be_paid_1
         checkin_notes = group['checkin'].notes if group['checkin'] else ''
         checkin_day_comments = group['checkin'].checkin_day_comments if group['checkin'] else ''
         
@@ -469,8 +479,8 @@ async def export_to_excel(
             checkin_phone,
             checkin_end_date,
             checkin_nights,
-            checkin_amount,
-            checkin_prepayment,
+            checkin_amount_display,
+            checkin_prepayment_display,
             checkin_doplata,
             checkin_services_total,
             checkin_notes,

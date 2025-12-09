@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, field_validator
+from typing import Optional, List, Union
 from datetime import date, time, datetime
 
 
@@ -73,7 +73,58 @@ class BookingSchema(BaseModel):
     amount: Optional[float] = None
     prepayment: Optional[float] = None
     payment: Optional[float] = None
+    platform_tax: Optional[float] = None  # Комиссия площадки (может быть null, числом или строкой "4554.0")
+    balance_to_be_paid_1: Optional[float] = None  # Доплата (может быть null или числом 16951)
     arrival_time: Optional[time] = None
+    
+    @field_validator('platform_tax', mode='before')
+    @classmethod
+    def parse_platform_tax(cls, v):
+        """Преобразует platform_tax из строки в число или возвращает None
+        
+        Обрабатывает случаи:
+        - null -> None
+        - "4554.0" -> 4554.0
+        - 4554.0 -> 4554.0
+        """
+        if v is None or v == "null" or v == "":
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() == "null":
+                return None
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        return None
+    
+    @field_validator('balance_to_be_paid_1', mode='before')
+    @classmethod
+    def parse_balance_to_be_paid_1(cls, v):
+        """Преобразует balance_to_be_paid_1 в float или возвращает None
+        
+        Обрабатывает случаи:
+        - null -> None
+        - 16951 (int) -> 16951.0
+        - 16951.0 (float) -> 16951.0
+        Также обрабатывает строки на случай изменения формата
+        """
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if not v or v.lower() == "null":
+                return None
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        return None
     departure_time: Optional[time] = None
     notes: Optional[str] = None
     client: Optional[ClientSchema] = None  # Опциональное поле (может отсутствовать при удалении)

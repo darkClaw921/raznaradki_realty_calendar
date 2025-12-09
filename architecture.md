@@ -151,7 +151,7 @@ SQLAlchemy модели базы данных:
   - Основные: id, action, status
   - Даты: begin_date, end_date
   - ID связей: realty_id, client_id (nullable, может быть None при удалении)
-  - Финансы: amount, prepayment, payment
+  - Финансы: amount, prepayment, payment, platform_tax (комиссия площадки), balance_to_be_paid_1 (доплата)
   - Время: arrival_time, departure_time
   - Клиент: client_fio, client_phone, client_email
   - Квартира: apartment_title (индексируется), apartment_address
@@ -346,6 +346,10 @@ CRUD операции для работы с базой данных:
     - Уровень 2: Адрес, Статус дома, ФИО (выс), Телефон (выс), Комментарий (выс), ФИО (зас), Телефон (зас), Дата выселения, Кол-во дней, Общая сумма, Предоплата, Доплата, Доп. услуги, Комментарий (зас), Комментарии по оплате и проживанию в день заселения
   - Данные разделены по секциям выселения и заселения
   - Включает сумму дополнительных услуг для каждого бронирования
+  - **Расчет финансовых показателей**:
+    - Общая сумма = amount - platform_tax (вычитается комиссия площадки)
+    - Предоплата = prepayment - platform_tax (вычитается комиссия площадки)
+    - Доплата = balance_to_be_paid_1 (берется из поля balance_to_be_paid_1)
   - **Стилизация Excel**:
     - Первая строка заголовков: фон rgb(245, 245, 245), жирный шрифт
     - Вторая строка заголовков - цветовое кодирование:
@@ -554,6 +558,10 @@ JavaScript для страницы управления услугами:
 - Даты в формате dd.mm.yyyy
 - Статусы: "Заселение", "Выселение", "Выс/Зас"
 - Финансовые данные без копеек
+- **Расчет финансовых показателей в разнарядках**:
+  - Общая сумма = amount - platform_tax (вычитается комиссия площадки)
+  - Предоплата = prepayment - platform_tax (вычитается комиссия площадки)
+  - Доплата = balance_to_be_paid_1 (берется из поля balance_to_be_paid_1 из webhook)
 - Группировка: данные по одному apartment_title и дате в одной строке
 - Секции выселения и заселения отображаются в зависимости от статуса
 - Единый формат таблицы для UI и экспорта
@@ -841,6 +849,8 @@ JavaScript для страницы управления услугами:
 | amount | Numeric(10,2) | Общая сумма |
 | prepayment | Numeric(10,2) | Предоплата |
 | payment | Numeric(10,2) | Оплата |
+| platform_tax | Numeric(10,2) | Комиссия площадки (из webhook) |
+| balance_to_be_paid_1 | Numeric(10,2) | Доплата (из webhook) |
 | arrival_time | Time | Время заселения |
 | departure_time | Time | Время выселения |
 | notes | String | Комментарии |
@@ -1119,6 +1129,16 @@ docker-compose down
 - Использует loguru для логирования процесса
 - Создает лог в logs/migration_client_id_YYYYMMDD_HHMMSS.log
 - Запуск: `uv run python migrate_client_id_nullable.py`
+
+### add_platform_tax_fields.py
+Скрипт миграции для добавления полей platform_tax и balance_to_be_paid_1:
+- Добавляет поле platform_tax (комиссия площадки) в таблицу bookings
+- Добавляет поле balance_to_be_paid_1 (доплата) в таблицу bookings
+- Оба поля типа NUMERIC(10,2), nullable
+- Проверяет существование полей перед добавлением
+- Использует loguru для логирования процесса
+- Создает лог в logs/migration_platform_tax_YYYYMMDD_HHMMSS.log
+- Запуск: `uv run python migrate/add_platform_tax_fields.py`
 
 ### run.sh
 Скрипт для запуска приложения:
